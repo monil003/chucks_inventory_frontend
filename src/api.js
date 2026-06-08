@@ -100,6 +100,14 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  uploadInitialCount: async (formData) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/upload-initial-count`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
   deleteSession: async (id) => {
     const res = await fetch(`${API_BASE_URL}/sessions/${id}`, {
       method: 'DELETE',
