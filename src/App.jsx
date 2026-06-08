@@ -58,6 +58,16 @@ export default function App() {
     setRawItems(prev => prev.filter(item => item._id !== id));
   };
 
+  const handleRefreshRawItems = async () => {
+    try {
+      const itemsData = await api.getRawItems();
+      setRawItems(itemsData);
+    } catch (err) {
+      console.error('Failed to refresh raw items', err);
+    }
+  };
+
+
   const handleSaveRecipe = async (recipe) => {
     const saved = await api.saveRecipe(recipe);
     setRecipes(prev => {
@@ -189,6 +199,7 @@ export default function App() {
             rawItems={rawItems} 
             onCreateRawItem={handleCreateRawItem}
             onDeleteRawItem={handleDeleteRawItem}
+            onRefreshRawItems={handleRefreshRawItems}
           />
         )}
 

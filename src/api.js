@@ -23,6 +23,15 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  uploadOrderGuide: async (formData) => {
+    const res = await fetch(`${API_BASE_URL}/raw-items/upload-order-guide`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+
 
   // Menu Items (autocomplete search)
   searchMenuItems: async (query) => {
