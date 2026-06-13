@@ -139,7 +139,7 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
     formData.append('file', file);
 
     try {
-      const result = await api.uploadInitialCount(formData); // reuse logic to extract rawItemId -> quantity
+      const result = await api.uploadEndCount(formData);
       
       const newCounts = { ...actualCounts };
       Object.keys(result.countsMap).forEach(id => {

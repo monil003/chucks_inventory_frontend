@@ -168,6 +168,15 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  uploadEndCount: async (formData) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/upload-end-count`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
   deleteSession: async (id) => {
     const res = await fetch(`${API_BASE_URL}/sessions/${id}`, {
       method: 'DELETE',
@@ -253,6 +262,15 @@ export const api = {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name, managerId }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  updateCsvMapping: async (restaurantId, csvMapping) => {
+    const res = await fetch(`${API_BASE_URL}/manager/restaurants/${restaurantId}/csv-mapping`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ csvMapping }),
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();

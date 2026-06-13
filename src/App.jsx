@@ -7,7 +7,8 @@ import DayInventoryCount from './pages/DayInventoryCount';
 import DayEndSales from './pages/DayEndSales';
 import AdminPanel from './pages/AdminPanel';
 import Setup from './pages/Setup';
-import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload } from 'lucide-react';
+import CsvMapping from './pages/CsvMapping';
+import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload, Sliders } from 'lucide-react';
 import './App.css';
 
 export default function App() {
@@ -409,6 +410,16 @@ export default function App() {
               Setup Directory
             </div>
           )}
+
+          {currentUser.role === 'manager' && (
+            <div 
+              className={`nav-item ${activeTab === 'csv-mapping' ? 'active' : ''}`}
+              onClick={() => handleNavClick('csv-mapping')}
+            >
+              <Sliders className="nav-icon" />
+              CSV Mapping
+            </div>
+          )}
         </nav>
         
         <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '1rem', paddingBottom: '0.5rem' }}>
@@ -450,6 +461,12 @@ export default function App() {
                 currentUser={currentUser} 
                 onRefreshUser={handleRefreshUser}
               />
+            ) : activeTab === 'csv-mapping' && currentUser.role === 'manager' ? (
+              <CsvMapping
+                activeRestaurant={activeRestaurant} 
+                currentUser={currentUser} 
+                onRefreshUser={handleRefreshUser}
+              />
             ) : (
               <div className="card text-center animate-fade-in" style={{ padding: '3.5rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.25rem', border: 'var(--glass-border)', maxWidth: '600px', margin: '4rem auto' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)' }}>
@@ -475,6 +492,14 @@ export default function App() {
 
             {activeTab === 'setup' && currentUser.role === 'manager' && (
               <Setup 
+                activeRestaurant={activeRestaurant} 
+                currentUser={currentUser} 
+                onRefreshUser={handleRefreshUser}
+              />
+            )}
+
+            {activeTab === 'csv-mapping' && currentUser.role === 'manager' && (
+              <CsvMapping
                 activeRestaurant={activeRestaurant} 
                 currentUser={currentUser} 
                 onRefreshUser={handleRefreshUser}
