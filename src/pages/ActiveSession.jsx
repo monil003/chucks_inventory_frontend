@@ -5,7 +5,7 @@ import {
   RefreshCw, Trash2, Search, ChevronLeft, FileSpreadsheet, Eye 
 } from 'lucide-react';
 
-export default function ActiveSession({ activeSession, completedSessions, rawItems, refreshSession, refreshHistory }) {
+export default function ActiveSession({ activeSession, completedSessions, rawItems, refreshSession, refreshHistory, currentUser }) {
   // States
   const [initialCounts, setInitialCounts] = useState({}); // { rawItemId: quantity }
   const [actualCounts, setActualCounts] = useState({}); // { rawItemId: quantity }
@@ -182,6 +182,36 @@ export default function ActiveSession({ activeSession, completedSessions, rawIte
       setLoading(false);
     }
   };
+
+  // Staff Role Access Check for Active Session
+  if (activeSession && currentUser?.role === 'staff') {
+    return (
+      <div className="animate-fade-in">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Daily Stock Count</h1>
+            <p className="page-subtitle">Daily inventory cycle is currently in progress</p>
+          </div>
+        </div>
+
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '3rem 2rem' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '50%', background: 'var(--success-glow)', color: 'var(--success)', marginBottom: '1.5rem', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+            <CheckCircle2 size={36} />
+          </div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+            Starting Stock Initialized
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', marginBottom: '2rem', lineHeight: '1.6' }}>
+            A daily inventory count session is currently active. The starting counts have been successfully set.
+            Only managers and administrators are authorized to upload POS sales reports, input closing counts, and review variance reports.
+          </p>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Please contact your manager or administrator to close this session at the end of the day.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 1. NO ACTIVE SESSION - INITIAL INVENTORY CONFIG
   if (!activeSession) {
