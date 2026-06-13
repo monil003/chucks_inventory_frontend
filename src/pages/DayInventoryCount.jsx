@@ -15,12 +15,16 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
   
   // Starting Count States
   const [initialCounts, setInitialCounts] = useState({});
+  const [startBoxesInput, setStartBoxesInput] = useState({});
+  const [startLooseInput, setStartLooseInput] = useState({});
   const [searchQueryStart, setSearchQueryStart] = useState('');
   const [currentPageStart, setCurrentPageStart] = useState(1);
   const [uploadFeedbackStart, setUploadFeedbackStart] = useState(null);
 
   // Ending Count States
   const [actualCounts, setActualCounts] = useState({});
+  const [endBoxesInput, setEndBoxesInput] = useState({});
+  const [endLooseInput, setEndLooseInput] = useState({});
   const [searchQueryEnd, setSearchQueryEnd] = useState('');
   const [currentPageEnd, setCurrentPageEnd] = useState(1);
   const [uploadFeedbackEnd, setUploadFeedbackEnd] = useState(null);
@@ -44,6 +48,10 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       // Initialize counts maps
       const initMap = {};
       const actMap = {};
+      const initBoxes = {};
+      const initLoose = {};
+      const actBoxes = {};
+      const actLoose = {};
 
       rawItems.forEach(item => {
         initMap[item._id] = 0;
@@ -53,18 +61,40 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       if (data) {
         if (data.initialInventory && data.initialInventory.length > 0) {
           data.initialInventory.forEach(item => {
-            initMap[item.rawItemId._id || item.rawItemId] = item.quantity;
+            const id = item.rawItemId._id || item.rawItemId;
+            const qty = item.quantity;
+            initMap[id] = qty;
+            const rItem = rawItems.find(r => r._id === id.toString());
+            if (rItem && rItem.quantityPerBox > 0) {
+              const b = Math.floor(qty / rItem.quantityPerBox);
+              const l = qty % rItem.quantityPerBox;
+              initBoxes[id] = b === 0 ? '' : String(b);
+              initLoose[id] = l === 0 ? '' : String(l);
+            }
           });
         }
         if (data.actualFinalInventory && data.actualFinalInventory.length > 0) {
           data.actualFinalInventory.forEach(item => {
-            actMap[item.rawItemId._id || item.rawItemId] = item.quantity;
+            const id = item.rawItemId._id || item.rawItemId;
+            const qty = item.quantity;
+            actMap[id] = qty;
+            const rItem = rawItems.find(r => r._id === id.toString());
+            if (rItem && rItem.quantityPerBox > 0) {
+              const b = Math.floor(qty / rItem.quantityPerBox);
+              const l = qty % rItem.quantityPerBox;
+              actBoxes[id] = b === 0 ? '' : String(b);
+              actLoose[id] = l === 0 ? '' : String(l);
+            }
           });
         }
       }
       
       setInitialCounts(initMap);
       setActualCounts(actMap);
+      setStartBoxesInput(initBoxes);
+      setStartLooseInput(initLoose);
+      setEndBoxesInput(actBoxes);
+      setEndLooseInput(actLoose);
     } catch (err) {
       console.error('Failed to load session for date', err);
       setError('Failed to retrieve inventory counts for selected date.');
@@ -77,6 +107,62 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
     loadSession();
   }, [selectedDate, rawItems]);
 
+  const handleStartBoxesChange = (itemId, val, qtyPerBox) => {
+    const newBoxes = { ...startBoxesInput, [itemId]: val };
+    setStartBoxesInput(newBoxes);
+
+    const boxes = Number(val) || 0;
+    const loose = Number(startLooseInput[itemId]) || 0;
+    const total = (boxes * qtyPerBox) + loose;
+
+    setInitialCounts(prev => ({
+      ...prev,
+      [itemId]: total
+    }));
+  };
+
+  const handleStartLooseChange = (itemId, val, qtyPerBox) => {
+    const newLoose = { ...startLooseInput, [itemId]: val };
+    setStartLooseInput(newLoose);
+
+    const boxes = Number(startBoxesInput[itemId]) || 0;
+    const loose = Number(val) || 0;
+    const total = (boxes * qtyPerBox) + loose;
+
+    setInitialCounts(prev => ({
+      ...prev,
+      [itemId]: total
+    }));
+  };
+
+  const handleEndBoxesChange = (itemId, val, qtyPerBox) => {
+    const newBoxes = { ...endBoxesInput, [itemId]: val };
+    setEndBoxesInput(newBoxes);
+
+    const boxes = Number(val) || 0;
+    const loose = Number(endLooseInput[itemId]) || 0;
+    const total = (boxes * qtyPerBox) + loose;
+
+    setActualCounts(prev => ({
+      ...prev,
+      [itemId]: total
+    }));
+  };
+
+  const handleEndLooseChange = (itemId, val, qtyPerBox) => {
+    const newLoose = { ...endLooseInput, [itemId]: val };
+    setEndLooseInput(newLoose);
+
+    const boxes = Number(endBoxesInput[itemId]) || 0;
+    const loose = Number(val) || 0;
+    const total = (boxes * qtyPerBox) + loose;
+
+    setActualCounts(prev => ({
+      ...prev,
+      [itemId]: total
+    }));
+  };
+
   const handleLoadLastCounts = () => {
     if (completedSessions.length === 0) {
       setError('No historical sessions found to load data from.');
@@ -84,13 +170,28 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
     }
     const lastSession = completedSessions[0];
     const counts = { ...initialCounts };
+    const newBoxes = { ...startBoxesInput };
+    const newLoose = { ...startLooseInput };
     lastSession.actualFinalInventory.forEach(item => {
       const id = item.rawItemId._id || item.rawItemId;
       if (id) {
-        counts[id] = item.quantity || 0;
+        const qty = item.quantity || 0;
+        counts[id] = qty;
+        const rItem = rawItems.find(r => r._id === id.toString());
+        if (rItem && rItem.quantityPerBox > 0) {
+          const b = Math.floor(qty / rItem.quantityPerBox);
+          const l = qty % rItem.quantityPerBox;
+          newBoxes[id] = b === 0 ? '' : String(b);
+          newLoose[id] = l === 0 ? '' : String(l);
+        } else if (rItem) {
+          newBoxes[id] = '';
+          newLoose[id] = '';
+        }
       }
     });
     setInitialCounts(counts);
+    setStartBoxesInput(newBoxes);
+    setStartLooseInput(newLoose);
     setError('');
   };
 
@@ -109,10 +210,25 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       const result = await api.uploadInitialCount(formData);
       
       const newCounts = { ...initialCounts };
+      const newBoxes = { ...startBoxesInput };
+      const newLoose = { ...startLooseInput };
       Object.keys(result.countsMap).forEach(id => {
-        newCounts[id] = result.countsMap[id];
+        const qty = result.countsMap[id];
+        newCounts[id] = qty;
+        const rItem = rawItems.find(r => r._id === id);
+        if (rItem && rItem.quantityPerBox > 0) {
+          const b = Math.floor(qty / rItem.quantityPerBox);
+          const l = qty % rItem.quantityPerBox;
+          newBoxes[id] = b === 0 ? '' : String(b);
+          newLoose[id] = l === 0 ? '' : String(l);
+        } else if (rItem) {
+          newBoxes[id] = '';
+          newLoose[id] = '';
+        }
       });
       setInitialCounts(newCounts);
+      setStartBoxesInput(newBoxes);
+      setStartLooseInput(newLoose);
 
       setUploadFeedbackStart({
         message: `Loaded ${result.matchedCount} count(s) from CSV. Click Save below to store.`,
@@ -142,10 +258,25 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       const result = await api.uploadEndCount(formData);
       
       const newCounts = { ...actualCounts };
+      const newBoxes = { ...endBoxesInput };
+      const newLoose = { ...endLooseInput };
       Object.keys(result.countsMap).forEach(id => {
-        newCounts[id] = result.countsMap[id];
+        const qty = result.countsMap[id];
+        newCounts[id] = qty;
+        const rItem = rawItems.find(r => r._id === id);
+        if (rItem && rItem.quantityPerBox > 0) {
+          const b = Math.floor(qty / rItem.quantityPerBox);
+          const l = qty % rItem.quantityPerBox;
+          newBoxes[id] = b === 0 ? '' : String(b);
+          newLoose[id] = l === 0 ? '' : String(l);
+        } else if (rItem) {
+          newBoxes[id] = '';
+          newLoose[id] = '';
+        }
       });
       setActualCounts(newCounts);
+      setEndBoxesInput(newBoxes);
+      setEndLooseInput(newLoose);
 
       setUploadFeedbackEnd({
         message: `Loaded ${result.matchedCount} count(s) from CSV. Click Save below to store.`,
@@ -357,34 +488,75 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
                     <tr>
                       <th>Ingredient</th>
                       <th>Unit</th>
-                      <th style={{ width: '200px' }}>Starting Count</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>Boxes</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>Buffer Pcs</th>
+                      <th style={{ width: '160px', textAlign: 'right' }}>Total Count</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedStartItems.map(item => (
-                      <tr key={item._id}>
-                        <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
-                        <td data-label="Unit">
-                          <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                            {item.unit}
-                          </span>
-                        </td>
-                        <td data-label="Starting Count">
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            className="input-field"
-                            value={initialCounts[item._id] ?? ''}
-                            onChange={(e) => setInitialCounts({
-                              ...initialCounts,
-                              [item._id]: e.target.value
-                            })}
-                            style={{ textAlign: 'right', fontWeight: 600 }}
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {paginatedStartItems.map(item => {
+                      const hasBoxConfig = item.quantityPerBox > 0;
+                      return (
+                        <tr key={item._id}>
+                          <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
+                          <td data-label="Unit">
+                            <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                              {item.unit}
+                            </span>
+                          </td>
+                          <td data-label="Boxes" style={{ textAlign: 'center' }}>
+                            {hasBoxConfig ? (
+                              <input
+                                type="number"
+                                min="0"
+                                className="input-field"
+                                value={startBoxesInput[item._id] ?? ''}
+                                onChange={(e) => handleStartBoxesChange(item._id, e.target.value, item.quantityPerBox)}
+                                placeholder="0"
+                                style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
+                              />
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            )}
+                          </td>
+                          <td data-label="Buffer Pcs" style={{ textAlign: 'center' }}>
+                            {hasBoxConfig ? (
+                              <input
+                                type="number"
+                                min="0"
+                                className="input-field"
+                                value={startLooseInput[item._id] ?? ''}
+                                onChange={(e) => handleStartLooseChange(item._id, e.target.value, item.quantityPerBox)}
+                                placeholder="0"
+                                style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
+                              />
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            )}
+                          </td>
+                          <td data-label="Total Count">
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              className="input-field"
+                              value={initialCounts[item._id] ?? ''}
+                              readOnly={hasBoxConfig}
+                              onChange={(e) => !hasBoxConfig && setInitialCounts({
+                                ...initialCounts,
+                                [item._id]: e.target.value
+                              })}
+                              style={{ 
+                                textAlign: 'right', 
+                                fontWeight: 600,
+                                background: hasBoxConfig ? 'rgba(255,255,255,0.02)' : '',
+                                color: hasBoxConfig ? 'var(--primary)' : ''
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -490,34 +662,75 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
                     <tr>
                       <th>Ingredient</th>
                       <th>Unit</th>
-                      <th style={{ width: '200px' }}>Closing Count</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>Boxes</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>Buffer Pcs</th>
+                      <th style={{ width: '160px', textAlign: 'right' }}>Total Count</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedEndItems.map(item => (
-                      <tr key={item._id}>
-                        <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
-                        <td data-label="Unit">
-                          <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                            {item.unit}
-                          </span>
-                        </td>
-                        <td data-label="Closing Count">
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            className="input-field"
-                            value={actualCounts[item._id] ?? ''}
-                            onChange={(e) => setActualCounts({
-                              ...actualCounts,
-                              [item._id]: e.target.value
-                            })}
-                            style={{ textAlign: 'right', fontWeight: 600 }}
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {paginatedEndItems.map(item => {
+                      const hasBoxConfig = item.quantityPerBox > 0;
+                      return (
+                        <tr key={item._id}>
+                          <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
+                          <td data-label="Unit">
+                            <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                              {item.unit}
+                            </span>
+                          </td>
+                          <td data-label="Boxes" style={{ textAlign: 'center' }}>
+                            {hasBoxConfig ? (
+                              <input
+                                type="number"
+                                min="0"
+                                className="input-field"
+                                value={endBoxesInput[item._id] ?? ''}
+                                onChange={(e) => handleEndBoxesChange(item._id, e.target.value, item.quantityPerBox)}
+                                placeholder="0"
+                                style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
+                              />
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            )}
+                          </td>
+                          <td data-label="Buffer Pcs" style={{ textAlign: 'center' }}>
+                            {hasBoxConfig ? (
+                              <input
+                                type="number"
+                                min="0"
+                                className="input-field"
+                                value={endLooseInput[item._id] ?? ''}
+                                onChange={(e) => handleEndLooseChange(item._id, e.target.value, item.quantityPerBox)}
+                                placeholder="0"
+                                style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
+                              />
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            )}
+                          </td>
+                          <td data-label="Total Count">
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              className="input-field"
+                              value={actualCounts[item._id] ?? ''}
+                              readOnly={hasBoxConfig}
+                              onChange={(e) => !hasBoxConfig && setActualCounts({
+                                ...actualCounts,
+                                [item._id]: e.target.value
+                              })}
+                              style={{ 
+                                textAlign: 'right', 
+                                fontWeight: 600,
+                                background: hasBoxConfig ? 'rgba(255,255,255,0.02)' : '',
+                                color: hasBoxConfig ? 'var(--primary)' : ''
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

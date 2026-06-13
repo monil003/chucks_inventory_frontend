@@ -5,6 +5,7 @@ import { api } from '../api';
 export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, onDeleteRawItem, onRefreshRawItems }) {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pcs');
+  const [quantityPerBox, setQuantityPerBox] = useState(0);
   const [error, setError] = useState('');
 
   const [editingItem, setEditingItem] = useState(null);
@@ -26,13 +27,14 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
 
     try {
       if (editingItem) {
-        await onUpdateRawItem(editingItem._id, { name: name.trim(), unit });
+        await onUpdateRawItem(editingItem._id, { name: name.trim(), unit, quantityPerBox: Number(quantityPerBox) || 0 });
         setEditingItem(null);
       } else {
-        await onCreateRawItem({ name: name.trim(), unit });
+        await onCreateRawItem({ name: name.trim(), unit, quantityPerBox: Number(quantityPerBox) || 0 });
       }
       setName('');
       setUnit('pcs');
+      setQuantityPerBox(0);
     } catch (err) {
       setError(err.message || 'Failed to save raw item');
     }
@@ -42,6 +44,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setEditingItem(item);
     setName(item.name);
     setUnit(item.unit);
+    setQuantityPerBox(item.quantityPerBox || 0);
     setError('');
   };
 
@@ -49,6 +52,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setEditingItem(null);
     setName('');
     setUnit('pcs');
+    setQuantityPerBox(0);
     setError('');
   };
 
@@ -143,6 +147,23 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   <option value="ml">Milliliters (ml)</option>
                   <option value="L">Liters (L)</option>
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Quantity per Box (Optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input-field"
+                  placeholder="e.g. 10 (Leave 0 if not counted in boxes)"
+                  value={quantityPerBox}
+                  onChange={(e) => setQuantityPerBox(e.target.value)}
+                  style={{ background: 'rgba(0, 0, 0, 0.2)' }}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  If set to a value greater than 0, you can enter stock counts in boxes and loose units.
+                </p>
               </div>
 
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
@@ -240,6 +261,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   <tr>
                     <th>Name</th>
                     <th>Unit of Measure</th>
+                    <th>Qty per Box</th>
                     <th style={{ textAlign: 'right' }}>Action</th>
                   </tr>
                 </thead>
@@ -251,6 +273,15 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                         <span className="badge badge-warning" style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                           {item.unit}
                         </span>
+                      </td>
+                      <td data-label="Qty per Box">
+                        {item.quantityPerBox > 0 ? (
+                          <span className="badge" style={{ color: '#fff', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                            {item.quantityPerBox} {item.unit} / box
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>-</span>
+                        )}
                       </td>
                       <td data-label="Action" style={{ textAlign: 'right' }}>
                         <button 
