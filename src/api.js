@@ -125,36 +125,36 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
-  getActiveSession: async () => {
-    const res = await fetch(`${API_BASE_URL}/sessions/active`, {
+  getSessionByDate: async (date) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/by-date?date=${date}`, {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
-  startSession: async (initialInventory) => {
-    const res = await fetch(`${API_BASE_URL}/sessions/start`, {
+  saveInitialCounts: async (date, initialInventory) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/save-initial`, {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ initialInventory }),
+      body: JSON.stringify({ date, initialInventory }),
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
-  uploadSales: async (formData) => {
-    const res = await fetch(`${API_BASE_URL}/sessions/upload-sales`, {
+  saveFinalCounts: async (date, actualFinalInventory) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/save-final`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ date, actualFinalInventory }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  uploadSales: async (date, formData) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/upload-sales?date=${date}`, {
       method: 'POST',
       headers: getHeaders(),
-      body: formData, // contains 'file' field
-    });
-    if (!res.ok) throw new Error(await getErrorMessage(res));
-    return res.json();
-  },
-  submitFinalCounts: async (actualFinalInventory) => {
-    const res = await fetch(`${API_BASE_URL}/sessions/submit-counts`, {
-      method: 'POST',
-      headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ actualFinalInventory }),
+      body: formData,
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();

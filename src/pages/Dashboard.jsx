@@ -2,14 +2,30 @@ import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { 
   BarChart3, Package, BookOpen, AlertTriangle, CheckCircle, Calendar, 
-  Trash2, Eye, ArrowLeft, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Clipboard 
+  Trash2, Eye, ArrowLeft, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Clipboard, Upload, CheckCircle2, XCircle, Clock
 } from 'lucide-react';
 
-export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession }) {
-  const [selectedSession, setSelectedSession] = useState(null);
+export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession, onViewTab }) {
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
+  const [selectedHistorySession, setSelectedHistorySession] = useState(null);
   const [detailsSearchQuery, setDetailsSearchQuery] = useState('');
   const [detailsCurrentPage, setDetailsCurrentPage] = useState(1);
   const itemsPerPage = 25;
+
+  // Find session for selected Date
+  const dateSession = useMemo(() => {
+    if (!selectedDate) return null;
+    const target = new Date(selectedDate);
+    target.setUTCHours(0,0,0,0);
+    return sessions.find(s => {
+      const d = new Date(s.date);
+      d.setUTCHours(0,0,0,0);
+      return d.getTime() === target.getTime();
+    }) || null;
+  }, [sessions, selectedDate]);
 
   // Compute basic stats
   const completedSessions = useMemo(() => {
@@ -17,11 +33,9 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   }, [sessions]);
 
   const stats = useMemo(() => {
-    const latestSession = completedSessions[0];
     let totalShortage = 0;
-    
-    if (latestSession) {
-      latestSession.variance.forEach(v => {
+    if (dateSession && dateSession.status === 'completed') {
+      dateSession.variance.forEach(v => {
         if (v.varianceValue < 0) {
           totalShortage += Math.abs(v.varianceValue);
         }
@@ -34,30 +48,26 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
       recipesCount: recipes.length,
       latestShortage: totalShortage
     };
-  }, [completedSessions, rawItems, recipes]);
+  }, [completedSessions, rawItems, recipes, dateSession]);
 
-  // Format chart data for the latest session
-  const latestSessionData = useMemo(() => {
-    const latest = completedSessions[0];
-    if (!latest || !latest.variance) return [];
-    
-    return latest.variance.map(v => ({
+  // Format chart data for the selected session
+  const dateSessionChartData = useMemo(() => {
+    if (!dateSession || !dateSession.variance) return [];
+    return dateSession.variance.map(v => ({
       name: v.rawItemId?.name || 'Unknown',
       variance: v.varianceValue,
       expected: v.expectedFinal,
       actual: v.actualFinal
-    }));
-  }, [completedSessions]);
+    })).filter(d => Math.abs(d.variance) > 0); // only show items with variance
+  }, [dateSession]);
 
   // Aggregate historical variance trend data
   const historicalTrendData = useMemo(() => {
-    // Take up to 10 latest completed sessions, reverse to show chronological order
     const list = [...completedSessions].slice(0, 10).reverse();
     return list.map(session => {
       const dataPoint = {
         date: new Date(session.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       };
-      // For each raw item, add its variance to the data point
       session.variance.forEach(v => {
         if (v.rawItemId) {
           dataPoint[v.rawItemId.name] = v.varianceValue;
@@ -67,8 +77,43 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
     });
   }, [completedSessions]);
 
-  if (selectedSession) {
-    const filteredDetails = selectedSession.variance.filter(v => {
+  // Verification helper flags for selected date
+  const isStartCountDone = useMemo(() => {
+    return !!(dateSession && dateSession.initialInventory && dateSession.initialInventory.some(i => i.quantity > 0));
+  }, [dateSession]);
+
+  const isSalesUploaded = useMemo(() => {
+    return !!(dateSession && dateSession.salesFile);
+  }, [dateSession]);
+
+  const isEndCountDone = useMemo(() => {
+    return !!(dateSession && dateSession.actualFinalInventory && dateSession.actualFinalInventory.some(i => i.quantity > 0));
+  }, [dateSession]);
+
+  const showSelectedVariance = isStartCountDone && isSalesUploaded && isEndCountDone;
+
+  const handleExportCSV = (sess) => {
+    if (!sess) return;
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Ingredient,Unit,Initial Count,Used Count,Expected Remaining,Actual Count,Variance\n";
+    sess.variance.forEach(v => {
+      const name = v.rawItemId?.name || 'Unknown';
+      const unit = v.rawItemId?.unit || '';
+      csvContent += `"${name.replace(/"/g, '""')}",${unit},${v.initial},${v.usage},${v.expectedFinal},${v.actualFinal},${v.varianceValue}\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `inventory_variance_${sess.date.split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const activeAuditSession = selectedHistorySession || (showSelectedVariance ? dateSession : null);
+
+  if (activeAuditSession) {
+    const filteredDetails = activeAuditSession.variance.filter(v => {
       const name = v.rawItemId?.name || 'Unknown';
       return name.toLowerCase().includes(detailsSearchQuery.toLowerCase());
     });
@@ -78,14 +123,13 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
     const startIndexDetails = (activePageDetails - 1) * itemsPerPage;
     const paginatedDetails = filteredDetails.slice(startIndexDetails, startIndexDetails + itemsPerPage);
 
-    // Compute stats
-    let totalItems = selectedSession.variance.length;
+    let totalItems = activeAuditSession.variance.length;
     let shortageCount = 0;
     let overageCount = 0;
     let onTargetCount = 0;
     let totalLoss = 0;
 
-    selectedSession.variance.forEach(v => {
+    activeAuditSession.variance.forEach(v => {
       const val = v.varianceValue;
       if (val < -0.05) {
         shortageCount++;
@@ -97,28 +141,6 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
       }
     });
 
-    const handleSearchChangeDetails = (e) => {
-      setDetailsSearchQuery(e.target.value);
-      setDetailsCurrentPage(1);
-    };
-
-    const handleExportCSV = () => {
-      let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Ingredient,Unit,Initial Count,Used Count,Expected Remaining,Actual Count,Variance\n";
-      selectedSession.variance.forEach(v => {
-        const name = v.rawItemId?.name || 'Unknown';
-        const unit = v.rawItemId?.unit || '';
-        csvContent += `"${name.replace(/"/g, '""')}",${unit},${v.initial},${v.usage},${v.expectedFinal},${v.actualFinal},${v.varianceValue}\n`;
-      });
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `inventory_variance_${selectedSession.date.split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
-
     return (
       <div className="animate-fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -126,29 +148,30 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
             <button 
               type="button" 
               className="btn btn-secondary" 
-              onClick={() => setSelectedSession(null)} 
+              onClick={() => {
+                setSelectedHistorySession(null);
+                setDetailsSearchQuery('');
+                setDetailsCurrentPage(1);
+              }} 
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', fontSize: '0.85rem', marginBottom: '0.75rem' }}
             >
-              <ArrowLeft size={16} /> Back to History
+              <ArrowLeft size={16} /> Back to Dashboard
             </button>
             <h1 className="page-title">
-              Audit Results - {new Date(selectedSession.date).toLocaleDateString(undefined, { 
+              Audit Results - {new Date(activeAuditSession.date).toLocaleDateString(undefined, { 
                 year: 'numeric', 
                 month: 'long', 
                 day: 'numeric' 
-              })} at {new Date(selectedSession.date).toLocaleTimeString(undefined, {
-                hour: '2-digit',
-                minute: '2-digit'
               })}
             </h1>
             <p className="page-subtitle" style={{ margin: 0 }}>
-              Sales CSV File: <span style={{ color: '#fff', fontStyle: 'italic' }}>{selectedSession.salesFile || 'Manual Entry'}</span>
+              Sales CSV File: <span style={{ color: '#fff', fontStyle: 'italic' }}>{activeAuditSession.salesFile || 'Manual Entry'}</span>
             </p>
           </div>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={handleExportCSV}
+            onClick={() => handleExportCSV(activeAuditSession)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.2rem', borderColor: 'var(--primary-glow)' }}
           >
             <FileSpreadsheet size={18} style={{ color: 'var(--primary)' }} /> Export Results to CSV
@@ -184,7 +207,6 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
             <Clipboard size={20} style={{ color: 'var(--primary)' }} /> Variance Report Details
           </h2>
 
-          {/* Search Box */}
           <div className="search-container" style={{ position: 'relative', marginBottom: '1.25rem' }}>
             <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={18} />
             <input
@@ -192,7 +214,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
               placeholder="Search audited ingredients..."
               className="input-field"
               value={detailsSearchQuery}
-              onChange={handleSearchChangeDetails}
+              onChange={(e) => { setDetailsSearchQuery(e.target.value); setDetailsCurrentPage(1); }}
               style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
             />
           </div>
@@ -204,7 +226,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                   <th>Ingredient</th>
                   <th>Unit</th>
                   <th style={{ textAlign: 'right' }}>Initial Count</th>
-                  <th style={{ textAlign: 'right' }}>Used Count (Expected Usage)</th>
+                  <th style={{ textAlign: 'right' }}>Expected Usage</th>
                   <th style={{ textAlign: 'right' }}>Expected Remaining</th>
                   <th style={{ textAlign: 'right' }}>Actual Count</th>
                   <th style={{ width: '120px', textAlign: 'center' }}>Variance</th>
@@ -225,7 +247,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                         </span>
                       </td>
                       <td data-label="Initial Count" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.initial.toFixed(1)}</td>
-                      <td data-label="Used Count" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.usage.toFixed(1)}</td>
+                      <td data-label="Expected Usage" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.usage.toFixed(1)}</td>
                       <td data-label="Exp. Remaining" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.expectedFinal.toFixed(1)}</td>
                       <td data-label="Actual Count" style={{ textAlign: 'right', fontWeight: 600 }}>{v.actualFinal.toFixed(1)}</td>
                       <td data-label="Variance" style={{ textAlign: 'center' }}>
@@ -246,18 +268,10 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                     </tr>
                   );
                 })}
-                {paginatedDetails.length === 0 && (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem 0' }}>
-                      No matching audited ingredients found.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
 
-          {/* Pagination controls for details */}
           {totalPagesDetails > 1 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0.5rem', background: 'rgba(255,255,255,0.01)', borderTop: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap', gap: '1rem' }}>
               <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
@@ -267,23 +281,23 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  style={{ padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
                   disabled={activePageDetails === 1}
                   onClick={() => setDetailsCurrentPage(activePageDetails - 1)}
                 >
-                  <ChevronLeft size={14} /> Prev
+                  Prev
                 </button>
-                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600, padding: '0 0.5rem' }}>
+                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>
                   Page {activePageDetails} of {totalPagesDetails}
                 </span>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  style={{ padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
                   disabled={activePageDetails === totalPagesDetails}
                   onClick={() => setDetailsCurrentPage(activePageDetails + 1)}
                 >
-                  Next <ChevronRight size={14} />
+                  Next
                 </button>
               </div>
             </div>
@@ -294,211 +308,278 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="dashboard-view animate-fade-in">
+      <div className="page-header" style={{ flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Inventory summaries, spoilage analytics, and session history</p>
+          <p className="page-subtitle">Inventory summaries, daily cycle tracking, and spoilage variance reports</p>
+        </div>
+
+        {/* Date Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(18,20,26,0.5)', padding: '0.5rem 1rem', borderRadius: '12px', border: 'var(--glass-border)' }}>
+          <Calendar size={18} style={{ color: 'var(--primary)' }} />
+          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Date:</span>
+          <input
+            type="date"
+            className="input-field"
+            value={selectedDate}
+            onChange={(e) => {
+              if (e.target.value) setSelectedDate(e.target.value);
+            }}
+            style={{ width: '150px', padding: '0.25rem 0.5rem', border: 'none', background: 'transparent', color: '#fff', fontSize: '0.95rem', cursor: 'pointer' }}
+          />
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="stats-card-container">
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
-            <Calendar size={24} />
-          </div>
-          <div>
-            <div className="stat-label">Completed Days</div>
-            <div className="stat-value">{stats.sessionsCount}</div>
-          </div>
-        </div>
+      {/* Audit Progress Tracking Section */}
+      <div className="card" style={{ marginBottom: '2rem', padding: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+          Daily Audit Tracker: {selectedDate}
+        </h2>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+          Check and execute the required stages to generate the variance analysis report for this date
+        </p>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', color: 'var(--primary)' }}>
-            <Package size={24} />
-          </div>
-          <div>
-            <div className="stat-label">Ingredients Tracked</div>
-            <div className="stat-value">{stats.itemsCount}</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7' }}>
-            <BookOpen size={24} />
-          </div>
-          <div>
-            <div className="stat-label">Portion Recipes</div>
-            <div className="stat-value">{stats.recipesCount}</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          {stats.latestShortage > 0 ? (
-            <div className="stat-card-inner" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-              <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
-                <AlertTriangle size={24} />
-              </div>
-              <div>
-                <div className="stat-label">Latest Variance (Loss)</div>
-                <div className="stat-value text-danger" style={{ color: 'var(--danger)' }}>-{stats.latestShortage.toFixed(1)}</div>
-              </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          {/* Stage 1: Starting Stock */}
+          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isStartCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 1</span>
+              {isStartCountDone ? (
+                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
+              ) : (
+                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
+              )}
             </div>
-          ) : (
-            <div className="stat-card-inner" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-              <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}>
-                <CheckCircle size={24} />
-              </div>
-              <div>
-                <div className="stat-label">System Health</div>
-                <div className="stat-value" style={{ color: 'var(--success)' }}>Perfect</div>
-              </div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day Start Count</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Opening stock counts entered for auditing.</p>
+            <button 
+              className="btn btn-secondary" 
+              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
+              onClick={() => onViewTab('inventory-count')}
+            >
+              {isStartCountDone ? 'Modify Counts' : 'Enter Starting Stock'}
+            </button>
+          </div>
+
+          {/* Stage 2: POS Sales */}
+          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isSalesUploaded ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 2</span>
+              {isSalesUploaded ? (
+                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
+              ) : (
+                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
+              )}
             </div>
-          )}
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day End Sales POS</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Sales file uploaded to calculate portion depletion.</p>
+            <button 
+              className="btn btn-secondary" 
+              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
+              onClick={() => onViewTab('end-sales')}
+            >
+              {isSalesUploaded ? 'Upload Different POS' : 'Upload POS CSV'}
+            </button>
+          </div>
+
+          {/* Stage 3: Day End Count */}
+          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isEndCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 3</span>
+              {isEndCountDone ? (
+                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
+              ) : (
+                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
+              )}
+            </div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day End Count</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Actual final stock counts entered for audit comparison.</p>
+            <button 
+              className="btn btn-secondary" 
+              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
+              onClick={() => onViewTab('inventory-count')}
+            >
+              {isEndCountDone ? 'Modify Final Counts' : 'Enter Closing Stock'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Analytics Charts */}
-      {completedSessions.length > 0 ? (
-        <div className="dashboard-grid">
-          {/* Latest Session Variance Chart */}
-          <div className="card">
-            <h2 className="form-label" style={{ fontSize: '1.1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <BarChart3 size={20} className="text-primary" /> Latest Session Variance Analysis
-            </h2>
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <BarChart data={latestSessionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
-                  <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#12141c', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                    itemStyle={{ color: '#f8fafc' }}
-                  />
-                  <Bar dataKey="variance" fill="url(#colorVariance)" radius={[4, 4, 0, 0]}>
-                    {latestSessionData.map((entry, index) => (
-                      <defs key={`defs-${index}`}>
-                        <linearGradient id="colorVariance" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="var(--danger)" stopOpacity={0.8}/>
-                        </linearGradient>
-                      </defs>
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+      {/* Show Variance Analytics if completed */}
+      {showSelectedVariance ? (
+        <>
+          <div className="stats-card-container">
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
+                <Calendar size={24} />
+              </div>
+              <div>
+                <div className="stat-label">Total Days Audited</div>
+                <div className="stat-value">{stats.sessionsCount}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', color: 'var(--primary)' }}>
+                <Package size={24} />
+              </div>
+              <div>
+                <div className="stat-label">Tracked Items</div>
+                <div className="stat-value">{stats.itemsCount}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a855f7' }}>
+                <BookOpen size={24} />
+              </div>
+              <div>
+                <div className="stat-label">Portion Recipes</div>
+                <div className="stat-value">{stats.recipesCount}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              {stats.latestShortage > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                  <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
+                    <AlertTriangle size={24} />
+                  </div>
+                  <div>
+                    <div className="stat-label">Shortage Loss ({selectedDate})</div>
+                    <div className="stat-value text-danger" style={{ color: 'var(--danger)' }}>-{stats.latestShortage.toFixed(1)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                  <div className="stat-icon-wrapper" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}>
+                    <CheckCircle size={24} />
+                  </div>
+                  <div>
+                    <div className="stat-label">Status ({selectedDate})</div>
+                    <div className="stat-value" style={{ color: 'var(--success)' }}>Balanced</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Historical Trend Chart */}
-          {rawItems.length > 0 && (
-            <div className="card">
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+            <button 
+              className="btn btn-primary" 
+              style={{ flex: 1, padding: '0.85rem' }} 
+              onClick={() => setSelectedHistorySession(null)}
+            >
+              <Eye size={16} /> Load Interactive Audit Details for {selectedDate}
+            </button>
+          </div>
+
+          {/* Variance Chart */}
+          {dateSessionChartData.length > 0 && (
+            <div className="card" style={{ marginBottom: '2.5rem' }}>
               <h2 className="form-label" style={{ fontSize: '1.1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <BarChart3 size={20} style={{ color: '#a855f7' }} /> Spoilage/Theft Trend (Last 10 Days)
+                <BarChart3 size={20} className="text-primary" /> Variance Analysis for {selectedDate} (Items with Discrepancies)
               </h2>
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
-                  <LineChart data={historicalTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <BarChart data={dateSessionChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="date" stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
                     <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#12141c', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                    />
-                    <Legend iconType="circle" />
-                    {rawItems.slice(0, 4).map((item, index) => {
-                      const colors = ['#f97316', '#a855f7', '#3b82f6', '#10b981'];
-                      return (
-                        <Line
-                          key={item._id}
-                          type="monotone"
-                          dataKey={item.name}
-                          stroke={colors[index % colors.length]}
-                          strokeWidth={2}
-                          activeDot={{ r: 6 }}
-                        />
-                      );
-                    })}
-                  </LineChart>
+                    <Tooltip contentStyle={{ backgroundColor: '#12141c', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                    <Bar dataKey="variance" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
           )}
-        </div>
+        </>
       ) : (
-        <div className="card" style={{ textAlign: 'center', padding: '4rem 2rem', marginBottom: '2.5rem' }}>
-          <AlertTriangle size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3 style={{ fontSize: '1.3rem', marginBottom: '0.5rem' }}>No Completed Sessions Yet</h3>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
-            To view variance analytics, start a daily inventory count, upload your sales data file, and submit your actual end-of-day counts.
+        <div className="card text-center" style={{ padding: '3rem 2rem', marginBottom: '2.5rem' }}>
+          <AlertTriangle size={36} style={{ color: 'var(--warning)', marginBottom: '1rem' }} />
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Variance Data Pending for {selectedDate}</h3>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: '520px', margin: '0 auto 1.5rem auto', fontSize: '0.9rem', lineHeight: 1.5 }}>
+            To generate and view the variance audit report for this date, please complete all three tracking stages (Day Start Count, POS Sales CSV upload, and Day End Count).
           </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {!isStartCountDone && (
+              <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => onViewTab('inventory-count')}>
+                Enter Opening counts
+              </button>
+            )}
+            {!isSalesUploaded && (
+              <button className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => onViewTab('end-sales')}>
+                Upload POS report
+              </button>
+            )}
+            {isStartCountDone && isSalesUploaded && !isEndCountDone && (
+              <button className="btn btn-primary" style={{ fontSize: '0.85rem' }} onClick={() => onViewTab('inventory-count')}>
+                Enter Closing counts
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* History List */}
+      {/* Historical logs */}
       <div className="card">
-        <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Inventory History</h2>
-        
+        <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Audit Log History</h2>
         {completedSessions.length > 0 ? (
           <div className="table-container">
-            <table className="custom-table">
+            <table className="custom-table responsive-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Sales CSV File</th>
+                  <th>Audit Date</th>
+                  <th>POS File</th>
                   <th>Ingredients Audited</th>
                   <th>Variance Status</th>
-                  <th>Actions</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {completedSessions.map(session => {
-                  const hasShortage = session.variance.some(v => v.varianceValue < 0);
-                  const isPerfect = session.variance.every(v => v.varianceValue === 0);
+                  const hasShortage = session.variance.some(v => v.varianceValue < -0.05);
+                  const isPerfect = session.variance.every(v => Math.abs(v.varianceValue) <= 0.05);
 
                   return (
                     <tr key={session._id}>
-                      <td style={{ fontWeight: 600 }}>
+                      <td data-label="Audit Date" style={{ fontWeight: 600 }}>
                         {new Date(session.date).toLocaleDateString(undefined, { 
                           weekday: 'short', 
                           year: 'numeric', 
                           month: 'short', 
                           day: 'numeric' 
-                        })} at {new Date(session.date).toLocaleTimeString(undefined, {
-                          hour: '2-digit',
-                          minute: '2-digit'
                         })}
                       </td>
-                      <td style={{ color: '#fff', fontStyle: 'italic' }}>
+                      <td data-label="POS File" style={{ color: '#fff', fontStyle: 'italic' }}>
                         {session.salesFile || 'Manual Entry'}
                       </td>
-                      <td>
-                        {session.variance.length} raw items
+                      <td data-label="Ingredients Audited">
+                        {session.variance.length} ingredients
                       </td>
-                      <td>
+                      <td data-label="Variance Status">
                         {isPerfect ? (
                           <span className="badge badge-success">No Variance</span>
                         ) : hasShortage ? (
-                          <span className="badge badge-danger">Shortage / Loss</span>
+                          <span className="badge badge-danger">Shortage / Spoilage</span>
                         ) : (
                           <span className="badge badge-warning">Overage</span>
                         )}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <td data-label="Actions" style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button 
                             type="button"
                             className="btn btn-secondary" 
                             style={{ padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}
                             onClick={() => {
-                              setSelectedSession(session);
+                              setSelectedHistorySession(session);
                               setDetailsSearchQuery('');
                               setDetailsCurrentPage(1);
                             }}
                           >
-                            <Eye size={15} style={{ color: 'var(--primary)' }} /> View Details
+                            <Eye size={15} style={{ color: 'var(--primary)' }} /> View Audit
                           </button>
                           <button 
                             className="btn btn-secondary" 
@@ -520,7 +601,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
             </table>
           </div>
         ) : (
-          <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No session logs available.</p>
+          <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No completed audit session logs available.</p>
         )}
       </div>
     </div>

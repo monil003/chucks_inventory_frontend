@@ -3,10 +3,11 @@ import { api } from './api';
 import Dashboard from './pages/Dashboard';
 import RawItems from './pages/RawItems';
 import Recipes from './pages/Recipes';
-import ActiveSession from './pages/ActiveSession';
+import DayInventoryCount from './pages/DayInventoryCount';
+import DayEndSales from './pages/DayEndSales';
 import AdminPanel from './pages/AdminPanel';
 import Setup from './pages/Setup';
-import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload } from 'lucide-react';
 import './App.css';
 
 export default function App() {
@@ -20,7 +21,7 @@ export default function App() {
     if (saved) {
       const user = JSON.parse(saved);
       if (user.role === 'admin') return 'admin-panel';
-      if (user.role === 'staff') return 'session';
+      if (user.role === 'staff') return 'inventory-count';
       return 'dashboard';
     }
     return 'dashboard';
@@ -36,7 +37,6 @@ export default function App() {
   const [rawItems, setRawItems] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [activeSession, setActiveSession] = useState(null);
   
   // Loading & Error states
   const [loading, setLoading] = useState(true);
@@ -119,22 +119,19 @@ export default function App() {
 
       // Fetch restaurant-scoped inventory records only if a restaurant context exists
       if (currentRest) {
-        const [itemsData, recipesData, sessionsData, activeSessionData] = await Promise.all([
+        const [itemsData, recipesData, sessionsData] = await Promise.all([
           api.getRawItems(),
           api.getRecipes(),
-          api.getSessions(),
-          api.getActiveSession()
+          api.getSessions()
         ]);
 
         setRawItems(itemsData);
         setRecipes(recipesData);
         setSessions(sessionsData);
-        setActiveSession(activeSessionData);
       } else {
         setRawItems([]);
         setRecipes([]);
         setSessions([]);
-        setActiveSession(null);
       }
     } catch (err) {
       console.error('Connection error with Express API backend', err);
@@ -194,7 +191,7 @@ export default function App() {
     if (user.role === 'admin') {
       setActiveTab('admin-panel');
     } else if (user.role === 'staff') {
-      setActiveTab('session');
+      setActiveTab('inventory-count');
     } else {
       setActiveTab('dashboard');
     }
@@ -231,19 +228,13 @@ export default function App() {
     setSessions(prev => prev.filter(s => s._id !== id));
   };
 
-  const refreshSession = async () => {
-    const data = await api.getActiveSession();
-    setActiveSession(data);
-  };
-
-  const refreshHistory = async () => {
-    const data = await api.getSessions();
-    setSessions(data);
-  };
-
   const handleSwitchRestaurant = (rest) => {
     localStorage.setItem('activeRestaurant', JSON.stringify(rest));
     setActiveRestaurant(rest);
+  };
+
+  const handleViewTab = (tabName) => {
+    setActiveTab(tabName);
   };
 
   if (connError) {
@@ -390,13 +381,24 @@ export default function App() {
           )}
 
           <div 
-            className={`nav-item ${activeTab === 'session' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
-            onClick={() => activeRestaurant && handleNavClick('session')}
+            className={`nav-item ${activeTab === 'inventory-count' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
+            onClick={() => activeRestaurant && handleNavClick('inventory-count')}
             title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
           >
-            <Activity className="nav-icon" />
-            {currentUser.role === 'staff' ? 'Daily Stock Count' : 'Day End Count'}
+            <ClipboardList className="nav-icon" />
+            Day Stock Count
           </div>
+
+          {currentUser.role !== 'staff' && (
+            <div 
+              className={`nav-item ${activeTab === 'end-sales' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
+              onClick={() => activeRestaurant && handleNavClick('end-sales')}
+              title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
+            >
+              <Upload className="nav-icon" />
+              Day End Sales
+            </div>
+          )}
 
           {currentUser.role === 'manager' && (
             <div 
@@ -485,6 +487,7 @@ export default function App() {
                 rawItems={rawItems} 
                 recipes={recipes} 
                 onDeleteSession={handleDeleteSession}
+                onViewTab={handleViewTab}
               />
             )}
 
@@ -507,14 +510,17 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'session' && activeRestaurant && (
-              <ActiveSession 
-                activeSession={activeSession}
-                completedSessions={sessions.filter(s => s.status === 'completed')}
+            {activeTab === 'inventory-count' && activeRestaurant && (
+              <DayInventoryCount 
                 rawItems={rawItems}
-                refreshSession={refreshSession}
-                refreshHistory={refreshHistory}
-                currentUser={currentUser}
+                completedSessions={sessions.filter(s => s.status === 'completed')}
+                onRefreshAll={loadData}
+              />
+            )}
+
+            {activeTab === 'end-sales' && activeRestaurant && (
+              <DayEndSales 
+                onRefreshAll={loadData}
               />
             )}
           </>
