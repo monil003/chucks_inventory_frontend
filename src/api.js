@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://chucks-inventory-backend.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5001/api' : 'https://chucks-inventory-backend.onrender.com/api');
 
 export const api = {
   // Raw Items
