@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
-import { Search, Plus, Trash2, BookOpen } from 'lucide-react';
+import { Search, Plus, Trash2, BookOpen, Edit2 } from 'lucide-react';
 import IngredientSearchSelect from '../components/IngredientSearchSelect';
 
 export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecipe }) {
@@ -13,6 +13,7 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
 
   // Form State
   const [selectedIngredients, setSelectedIngredients] = useState([]); // [{ rawItemId, quantity }]
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -121,6 +122,31 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
       setError(err.message || 'Failed to save recipe');
     }
   };
+
+  const handleStartEditRecipe = (recipe) => {
+    const menuItem = {
+      item_sku_code: recipe.menuItemSku,
+      name: recipe.menuItemName,
+      type: 'Item'
+    };
+    setSelectedMenuItem(menuItem);
+    setSearchQuery(recipe.menuItemName);
+    
+    setSelectedIngredients(
+      recipe.ingredients.map(ing => ({
+        rawItemId: ing.rawItemId?._id || ing.rawItemId,
+        quantity: ing.quantity
+      }))
+    );
+    setError('');
+    setSuccess('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const filteredRecipes = recipes.filter(recipe =>
+    recipe.menuItemName.toLowerCase().includes(catalogSearchQuery.toLowerCase()) ||
+    recipe.menuItemSku.toLowerCase().includes(catalogSearchQuery.toLowerCase())
+  );
 
   return (
     <div className="animate-fade-in">
@@ -268,9 +294,23 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
 
         {/* Recipes Catalog List */}
         <div className="card">
-          <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Portion Recipes ({recipes.length})</h2>
+          <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Portion Recipes ({recipes.length})</h2>
           
-          {recipes.length > 0 ? (
+          {recipes.length > 0 && (
+            <div className="form-group" style={{ position: 'relative', marginBottom: '1.5rem' }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Search recipes by name or SKU..."
+                value={catalogSearchQuery}
+                onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                style={{ paddingLeft: '2.5rem' }}
+              />
+              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            </div>
+          )}
+
+          {filteredRecipes.length > 0 ? (
             <div className="table-container">
               <table className="custom-table responsive-table">
                 <thead>
@@ -282,8 +322,8 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
                   </tr>
                 </thead>
                 <tbody>
-                  {recipes.map(recipe => (
-                    <tr key={recipe._id}>
+                  {filteredRecipes.map(recipe => (
+                    <tr key={recipe._id} style={selectedMenuItem?.item_sku_code === recipe.menuItemSku ? { background: 'rgba(249, 115, 22, 0.08)' } : {}}>
                       <td data-label="Menu Product">
                         <div style={{ fontWeight: 600 }}>{recipe.menuItemName}</div>
                       </td>
@@ -304,12 +344,26 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
                       <td data-label="Action" style={{ textAlign: 'right' }}>
                         <button 
                           className="btn btn-secondary" 
+                          style={{ padding: '0.4rem 0.8rem', marginRight: '0.5rem', color: 'var(--primary)', borderColor: 'rgba(249, 115, 22, 0.15)' }}
+                          onClick={() => handleStartEditRecipe(recipe)}
+                          title="Edit recipe"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          className="btn btn-secondary" 
                           style={{ padding: '0.4rem 0.8rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
                           onClick={() => {
                             if (window.confirm(`Are you sure you want to delete the recipe for "${recipe.menuItemName}"?`)) {
+                              if (selectedMenuItem?.item_sku_code === recipe.menuItemSku) {
+                                setSelectedMenuItem(null);
+                                setSearchQuery('');
+                                setSelectedIngredients([]);
+                              }
                               onDeleteRecipe(recipe._id);
                             }
                           }}
+                          title="Delete recipe"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -319,6 +373,8 @@ export default function Recipes({ recipes, rawItems, onSaveRecipe, onDeleteRecip
                 </tbody>
               </table>
             </div>
+          ) : recipes.length > 0 ? (
+            <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '1rem 0' }}>No matching recipes found.</p>
           ) : (
             <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '1rem 0' }}>No recipes configured yet.</p>
           )}

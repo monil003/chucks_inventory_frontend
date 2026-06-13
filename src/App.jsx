@@ -59,6 +59,25 @@ export default function App() {
     setRawItems(prev => prev.filter(item => item._id !== id));
   };
 
+  const handleUpdateRawItem = async (id, updatedItem) => {
+    const updated = await api.updateRawItem(id, updatedItem);
+    setRawItems(prev => prev.map(item => item._id === id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)));
+    
+    // Also update rawItem embedded in recipes state to avoid outdated values
+    setRecipes(prevRecipes => prevRecipes.map(recipe => {
+      const updatedIngredients = recipe.ingredients.map(ing => {
+        if (ing.rawItemId && (ing.rawItemId._id === id || ing.rawItemId === id)) {
+          return {
+            ...ing,
+            rawItemId: typeof ing.rawItemId === 'object' ? { ...ing.rawItemId, ...updated } : updated
+          };
+        }
+        return ing;
+      });
+      return { ...recipe, ingredients: updatedIngredients };
+    }));
+  };
+
   const handleRefreshRawItems = async () => {
     try {
       const itemsData = await api.getRawItems();
@@ -225,6 +244,7 @@ export default function App() {
           <RawItems 
             rawItems={rawItems} 
             onCreateRawItem={handleCreateRawItem}
+            onUpdateRawItem={handleUpdateRawItem}
             onDeleteRawItem={handleDeleteRawItem}
             onRefreshRawItems={handleRefreshRawItems}
           />

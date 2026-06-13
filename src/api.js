@@ -23,6 +23,15 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  updateRawItem: async (id, item) => {
+    const res = await fetch(`${API_BASE_URL}/raw-items/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
   uploadOrderGuide: async (formData) => {
     const res = await fetch(`${API_BASE_URL}/raw-items/upload-order-guide`, {
       method: 'POST',

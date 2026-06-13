@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Trash2, Plus, Sparkles, Upload, CheckCircle2 } from 'lucide-react';
+import { Trash2, Plus, Sparkles, Upload, CheckCircle2, Search, Edit2 } from 'lucide-react';
 import { api } from '../api';
 
-export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, onRefreshRawItems }) {
+export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, onDeleteRawItem, onRefreshRawItems }) {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pcs');
   const [error, setError] = useState('');
+
+  const [editingItem, setEditingItem] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [csvFile, setCsvFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -22,11 +25,31 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
     }
 
     try {
-      await onCreateRawItem({ name: name.trim(), unit });
+      if (editingItem) {
+        await onUpdateRawItem(editingItem._id, { name: name.trim(), unit });
+        setEditingItem(null);
+      } else {
+        await onCreateRawItem({ name: name.trim(), unit });
+      }
       setName('');
+      setUnit('pcs');
     } catch (err) {
-      setError(err.message || 'Failed to create raw item');
+      setError(err.message || 'Failed to save raw item');
     }
+  };
+
+  const handleStartEdit = (item) => {
+    setEditingItem(item);
+    setName(item.name);
+    setUnit(item.unit);
+    setError('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingItem(null);
+    setName('');
+    setUnit('pcs');
+    setError('');
   };
 
   const handleFileChange = (e) => {
@@ -63,6 +86,10 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
   };
 
 
+  const filteredItems = rawItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="animate-fade-in">
       <div className="page-header">
@@ -77,7 +104,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
           {/* Add Raw Item Form */}
           <div className="card" style={{ height: 'fit-content' }}>
             <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={20} style={{ color: 'var(--primary)' }} /> Add Ingredient
+              {editingItem ? <Edit2 size={20} style={{ color: 'var(--primary)' }} /> : <Sparkles size={20} style={{ color: 'var(--primary)' }} />} 
+              {editingItem ? 'Edit Ingredient' : 'Add Ingredient'}
             </h2>
             
             {error && (
@@ -118,8 +146,18 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
               </div>
 
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
-                <Plus size={18} /> Add Ingredient
+                {editingItem ? 'Save Changes' : <><Plus size={18} /> Add Ingredient</>}
               </button>
+              {editingItem && (
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ width: '100%', marginTop: '0.5rem' }} 
+                  onClick={handleCancelEdit}
+                >
+                  Cancel
+                </button>
+              )}
             </form>
           </div>
 
@@ -179,9 +217,23 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
         {/* Raw Items List Table */}
         <div className="card">
 
-          <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Current Ingredients ({rawItems.length})</h2>
+          <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Current Ingredients ({rawItems.length})</h2>
+
+          {rawItems.length > 0 && (
+            <div className="form-group" style={{ position: 'relative', marginBottom: '1.5rem' }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Search ingredients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '2.5rem' }}
+              />
+              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            </div>
+          )}
           
-          {rawItems.length > 0 ? (
+          {filteredItems.length > 0 ? (
             <div className="table-container" style={{ maxHeight: '450px', overflowY: 'auto' }}>
               <table className="custom-table responsive-table">
                 <thead>
@@ -192,8 +244,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
                   </tr>
                 </thead>
                 <tbody>
-                  {rawItems.map(item => (
-                    <tr key={item._id}>
+                  {filteredItems.map(item => (
+                    <tr key={item._id} style={editingItem?._id === item._id ? { background: 'rgba(249, 115, 22, 0.08)' } : {}}>
                       <td data-label="Name" style={{ fontWeight: 600 }}>{item.name}</td>
                       <td data-label="Unit">
                         <span className="badge badge-warning" style={{ color: '#fff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
@@ -203,12 +255,24 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
                       <td data-label="Action" style={{ textAlign: 'right' }}>
                         <button 
                           className="btn btn-secondary" 
+                          style={{ padding: '0.4rem 0.8rem', marginRight: '0.5rem', color: 'var(--primary)', borderColor: 'rgba(249, 115, 22, 0.15)' }}
+                          onClick={() => handleStartEdit(item)}
+                          title="Edit ingredient"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          className="btn btn-secondary" 
                           style={{ padding: '0.4rem 0.8rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)' }}
                           onClick={() => {
                             if (window.confirm(`Are you sure you want to delete "${item.name}"? This will affect recipes using this item.`)) {
+                              if (editingItem?._id === item._id) {
+                                handleCancelEdit();
+                              }
                               onDeleteRawItem(item._id);
                             }
                           }}
+                          title="Delete ingredient"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -218,6 +282,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onDeleteRawItem, o
                 </tbody>
               </table>
             </div>
+          ) : rawItems.length > 0 ? (
+            <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '1rem 0' }}>No matching ingredients found.</p>
           ) : (
             <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '1rem 0' }}>No ingredients created yet.</p>
           )}
