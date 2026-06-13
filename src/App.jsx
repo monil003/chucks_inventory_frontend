@@ -545,6 +545,7 @@ export default function App() {
 
             {activeTab === 'end-sales' && activeRestaurant && (
               <DayEndSales 
+                recipes={recipes}
                 onRefreshAll={loadData}
               />
             )}

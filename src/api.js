@@ -150,6 +150,15 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  saveSalesData: async (date, salesData, salesFile) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/save-sales`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ date, salesData, salesFile }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
   uploadSales: async (date, formData) => {
     const res = await fetch(`${API_BASE_URL}/sessions/upload-sales?date=${date}`, {
       method: 'POST',
