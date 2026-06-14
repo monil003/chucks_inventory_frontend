@@ -45,8 +45,8 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
       setSalesEntries(session.salesData.map(item => ({
         sku: item.sku || '',
         name: item.name || '',
-        quantitySold: item.quantitySold || 0,
-        price: item.price || 0,
+        quantitySold: item.quantitySold,
+        price: item.price,
         _id: item._id || Math.random().toString(),
         isEditingProduct: false
       })));
@@ -72,8 +72,8 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
       return (
         local.sku !== db.sku ||
         local.name !== db.name ||
-        Number(local.quantitySold) !== Number(db.quantitySold) ||
-        Number(local.price) !== Number(db.price)
+        local.quantitySold !== db.quantitySold ||
+        local.price !== db.price
       );
     });
     setIsModified(different);
@@ -159,10 +159,7 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
   const handleRowChange = (id, field, value) => {
     setSalesEntries(prev => prev.map(entry => {
       if (entry._id === id) {
-        let val = value;
-        if (field === 'quantitySold') val = parseInt(value, 10) || 0;
-        if (field === 'price') val = parseFloat(value) || 0;
-        return { ...entry, [field]: val };
+        return { ...entry, [field]: value };
       }
       return entry;
     }));
@@ -208,6 +205,29 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
     setSuggestions([]);
   };
 
+  const handleKeyDown = (e, entry) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const list = getMergedSuggestions();
+      if (list.length > 0) {
+        handleSelectProduct(entry._id, list[0]);
+      } else if (queryText.trim()) {
+        handleSelectProduct(entry._id, {
+          item_sku_code: 'MANUAL-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+          name: queryText.trim()
+        });
+      }
+    } else if (e.key === 'Escape') {
+      setActiveSearchId(null);
+      setSalesEntries(prev => prev.map(item => {
+        if (item._id === entry._id) {
+          return { ...item, isEditingProduct: false };
+        }
+        return item;
+      }));
+    }
+  };
+
   const handleSaveSales = async () => {
     const invalid = salesEntries.some(entry => !entry.sku);
     if (invalid) {
@@ -220,7 +240,13 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
       setError('');
       setSuccess('');
       const filename = session?.salesFile || 'Manually Entered';
-      const updated = await api.saveSalesData(selectedDate, salesEntries, filename);
+      const formattedSales = salesEntries.map(entry => ({
+        sku: entry.sku,
+        name: entry.name,
+        quantitySold: parseInt(entry.quantitySold, 10) || 0,
+        price: parseFloat(entry.price) || 0
+      }));
+      const updated = await api.saveSalesData(selectedDate, formattedSales, filename);
       setSession(updated);
       setSuccess('Sales log saved successfully!');
       if (onRefreshAll) onRefreshAll();
@@ -236,8 +262,8 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
       setSalesEntries(session.salesData.map(item => ({
         sku: item.sku || '',
         name: item.name || '',
-        quantitySold: item.quantitySold || 0,
-        price: item.price || 0,
+        quantitySold: item.quantitySold,
+        price: item.price,
         _id: item._id || Math.random().toString(),
         isEditingProduct: false
       })));
@@ -296,7 +322,7 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
   const hasSales = session && session.salesFile && session.salesData && session.salesData.length > 0;
 
   return (
-    <div className="day-end-sales-page animate-fade-in">
+    <div className="day-end-sales-page animate-fade-in" style={{ overflow: 'visible' }}>
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 className="page-title">Day End Sales</h1>
@@ -333,270 +359,62 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
         </div>
       )}
 
-      <div className="dashboard-grid">
-        {/* Left Column: POS CSV Upload & Editable Sales Log */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflow: 'visible' }}>
-          
-          {/* Upload Card */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div>
-              <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>Upload POS Sales Report</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Import day-end sales CSV for {selectedDate}</p>
-            </div>
-
-            <form onSubmit={handleUploadSales}>
-              <div 
-                className="upload-dropzone" 
-                onClick={() => document.getElementById('sales-file-input-page').click()}
-              >
-                <Upload className="upload-icon" style={{ color: 'var(--primary)' }} />
-                <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-                  {uploadFile ? uploadFile.name : 'Select POS Sales CSV'}
-                </h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                  Supports standard items and modifier SKUs exports
-                </p>
-                <input
-                  id="sales-file-input-page"
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                />
-              </div>
-
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{ width: '100%', marginTop: '1.5rem' }} 
-                disabled={loading || !uploadFile}
-              >
-                {loading ? 'Uploading & Computing...' : 'Process POS Sales File'}
-              </button>
-            </form>
+      {/* Top Grid: Upload Control & Ingredient Depletion Calculations */}
+      <div className="dashboard-grid" style={{ marginBottom: '1.5rem' }}>
+        
+        {/* Upload Card */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div>
+            <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>Upload POS Sales Report</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Import day-end sales CSV for {selectedDate}</p>
           </div>
 
-          {/* POS Sales Entries Grid Card */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', overflow: 'visible' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>POS Sales Log</h2>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  {session?.salesFile ? `Source: ${session.salesFile}` : 'No sales logs loaded'}
-                </p>
-              </div>
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                onClick={handleAddRow}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}
-              >
-                <Plus size={15} /> Add Item
-              </button>
+          <form onSubmit={handleUploadSales}>
+            <div 
+              className="upload-dropzone" 
+              onClick={() => document.getElementById('sales-file-input-page').click()}
+            >
+              <Upload className="upload-icon" style={{ color: 'var(--primary)' }} />
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                {uploadFile ? uploadFile.name : 'Select POS Sales CSV'}
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                Supports standard items and modifier SKUs exports
+              </p>
+              <input
+                id="sales-file-input-page"
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+              />
             </div>
 
-            {salesEntries.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', gap: '0.5rem' }}>
-                <Table size={32} />
-                <p style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>
-                  No sales logged. Click "Add Item" above or upload a CSV report.
-                </p>
-              </div>
-            ) : (
-              <div className="table-container" style={{ overflow: 'visible', maxHeight: '420px', overflowY: 'auto' }}>
-                <table className="custom-table" style={{ overflow: 'visible' }}>
-                  <thead>
-                    <tr>
-                      <th>Menu Product</th>
-                      <th style={{ width: '130px' }}>SKU</th>
-                      <th style={{ width: '100px', textAlign: 'center' }}>Qty Sold</th>
-                      <th style={{ width: '100px', textAlign: 'center' }}>Price ($)</th>
-                      <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody style={{ overflow: 'visible' }}>
-                    {salesEntries.map((entry) => (
-                      <tr key={entry._id} style={{ overflow: 'visible' }}>
-                        {/* Menu Product */}
-                        <td style={{ position: 'relative', overflow: 'visible' }}>
-                          {entry.isEditingProduct ? (
-                            <div style={{ position: 'relative' }}>
-                              <input
-                                type="text"
-                                className="input-field"
-                                placeholder="Type menu item..."
-                                value={queryText}
-                                onChange={(e) => setQueryText(e.target.value)}
-                                onBlur={() => handleInputBlur(entry)}
-                                autoFocus
-                                style={{ paddingLeft: '1.8rem', paddingRight: '0.5rem', width: '100%', height: '34px', fontSize: '0.85rem' }}
-                              />
-                              <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                              
-                              {/* Suggestions Dropdown */}
-                              {activeSearchId === entry._id && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  left: 0,
-                                  right: 0,
-                                  zIndex: 1000,
-                                  background: '#12141c',
-                                  border: 'var(--glass-border)',
-                                  borderRadius: '8px',
-                                  boxShadow: '0 8px 24px rgba(0,0,0,0.7)',
-                                  marginTop: '4px',
-                                  maxHeight: '180px',
-                                  overflowY: 'auto'
-                                }}>
-                                  {getMergedSuggestions().length > 0 ? (
-                                    getMergedSuggestions().map((item) => (
-                                      <div
-                                        key={item._id || item.item_sku_code}
-                                        onMouseDown={() => handleSelectProduct(entry._id, item)}
-                                        style={{
-                                          padding: '0.55rem 0.75rem',
-                                          cursor: 'pointer',
-                                          borderBottom: '1px solid rgba(255,255,255,0.03)',
-                                          textAlign: 'left',
-                                          display: 'flex',
-                                          justifyContent: 'space-between',
-                                          alignItems: 'center'
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>
-                                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff' }}>{item.name}</div>
-                                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>SKU: {item.item_sku_code}</div>
-                                        </div>
-                                        {item.hasRecipe && (
-                                          <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.12)', color: 'var(--primary)', border: '1px solid rgba(249, 115, 22, 0.2)', fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>
-                                            Recipe
-                                          </span>
-                                        )}
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div style={{ padding: '0.55rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                                      No products found
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div 
-                              onClick={() => handleStartEditingProduct(entry)}
-                              style={{ 
-                                cursor: 'pointer', 
-                                fontWeight: 600, 
-                                minHeight: '34px', 
-                                display: 'flex', 
-                                alignItems: 'center',
-                                padding: '2px 6px',
-                                borderRadius: '6px',
-                                border: '1px solid transparent',
-                                transition: 'var(--transition-fast)'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
-                              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
-                            >
-                              {entry.name || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Click to search product</span>}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* SKU */}
-                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', verticalAlign: 'middle' }}>
-                          {entry.sku || <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                        </td>
-
-                        {/* Quantity Sold */}
-                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            className="input-field"
-                            value={entry.quantitySold}
-                            onChange={(e) => handleRowChange(entry._id, 'quantitySold', e.target.value)}
-                            style={{ textAlign: 'center', height: '34px', fontSize: '0.85rem', padding: '2px' }}
-                          />
-                        </td>
-
-                        {/* Price */}
-                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            className="input-field"
-                            value={entry.price}
-                            onChange={(e) => handleRowChange(entry._id, 'price', e.target.value)}
-                            style={{ textAlign: 'center', height: '34px', fontSize: '0.85rem', padding: '2px' }}
-                          />
-                        </td>
-
-                        {/* Action */}
-                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => handleDeleteRow(entry._id)}
-                            style={{ color: 'var(--danger)', padding: '0.45rem', borderColor: 'transparent', background: 'transparent' }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Save / Discard Controls */}
-            {isModified && (
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', animation: 'animate-fade-in 0.2s' }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleSaveSales}
-                  disabled={loading}
-                  style={{ flex: 1 }}
-                >
-                  {loading ? 'Saving...' : 'Save Sales Entries'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleDiscardChanges}
-                  disabled={loading}
-                  style={{ flex: 1 }}
-                >
-                  Discard Changes
-                </button>
-              </div>
-            )}
-          </div>
+            <button 
+              type="submit" 
+              className="btn btn-primary" 
+              style={{ width: '100%', marginTop: '1.5rem' }} 
+              disabled={loading || !uploadFile}
+            >
+              {loading ? 'Uploading & Computing...' : 'Process POS Sales File'}
+            </button>
+          </form>
         </div>
 
-        {/* Right Column: Computed Ingredient Depletion */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignSelf: 'start' }}>
+        {/* Display Usage Column */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div>
             <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>Computed Ingredient Depletion</h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Quantities deducted from inventory based on portions and sold items</p>
           </div>
 
           {!hasSales ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 1rem', textAlign: 'center', color: 'var(--text-muted)', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', gap: '0.5rem' }}>
               <Table size={36} />
               <p style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>Please record or upload POS sales report to view ingredient depletion.</p>
             </div>
           ) : (
-            <div className="table-container" style={{ maxHeight: '450px', overflowY: 'auto' }}>
+            <div className="table-container" style={{ maxHeight: '380px', overflowY: 'auto' }}>
               <table className="custom-table">
                 <thead>
                   <tr>
@@ -626,6 +444,234 @@ export default function DayEndSales({ recipes = [], onRefreshAll }) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* POS Sales Entries Grid Card (Full Width for Roomy Column Space) */}
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', overflow: 'visible' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>POS Sales Log / Manual Entry</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+              {session?.salesFile ? `Source: ${session.salesFile}` : 'No sales logs loaded'}
+            </p>
+          </div>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={handleAddRow}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}
+          >
+            <Plus size={15} /> Add Item
+          </button>
+        </div>
+
+        {salesEntries.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 1rem', textAlign: 'center', color: 'var(--text-muted)', gap: '0.5rem' }}>
+            <Table size={36} />
+            <p style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>
+              No sales logged for {selectedDate}. Click "Add Item" above or upload a CSV report.
+            </p>
+          </div>
+        ) : (
+          <div className="table-container" style={{ overflow: 'visible' }}>
+            <table className="custom-table" style={{ overflow: 'visible' }}>
+              <thead>
+                <tr>
+                  <th>Menu Product</th>
+                  <th style={{ width: '180px' }}>SKU</th>
+                  <th style={{ width: '130px', textAlign: 'center' }}>Qty Sold</th>
+                  <th style={{ width: '140px', textAlign: 'center' }}>Price ($)</th>
+                  <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody style={{ overflow: 'visible' }}>
+                {salesEntries.map((entry) => (
+                  <tr key={entry._id} style={{ overflow: 'visible' }}>
+                    {/* Menu Product */}
+                    <td style={{ position: 'relative', overflow: 'visible' }}>
+                      {entry.isEditingProduct ? (
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="text"
+                            className="input-field"
+                            placeholder="Type menu item..."
+                            value={queryText}
+                            onChange={(e) => setQueryText(e.target.value)}
+                            onBlur={() => handleInputBlur(entry)}
+                            onKeyDown={(e) => handleKeyDown(e, entry)}
+                            autoFocus
+                            style={{ 
+                              paddingLeft: '1.8rem', 
+                              paddingRight: '0.5rem', 
+                              width: '100%', 
+                              height: '34px', 
+                              fontSize: '0.85rem',
+                              border: '1px solid var(--primary)',
+                              background: 'rgba(0,0,0,0.3)'
+                            }}
+                          />
+                          <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }} />
+                          
+                          {/* Suggestions Dropdown */}
+                          {activeSearchId === entry._id && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '100%',
+                              left: 0,
+                              right: 0,
+                              zIndex: 1000,
+                              background: '#12141c',
+                              border: 'var(--glass-border)',
+                              borderRadius: '8px',
+                              boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
+                              marginTop: '4px',
+                              maxHeight: '200px',
+                              overflowY: 'auto'
+                            }}>
+                              {getMergedSuggestions().length > 0 ? (
+                                getMergedSuggestions().map((item) => (
+                                  <div
+                                    key={item._id || item.item_sku_code}
+                                    onMouseDown={() => handleSelectProduct(entry._id, item)}
+                                    style={{
+                                      padding: '0.6rem 0.8rem',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                      textAlign: 'left',
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>
+                                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff' }}>{item.name}</div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>SKU: {item.item_sku_code}</div>
+                                    </div>
+                                    {item.hasRecipe && (
+                                      <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.12)', color: 'var(--primary)', border: '1px solid rgba(249, 115, 22, 0.2)', fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>
+                                        Recipe
+                                      </span>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <div style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                  No products found. Press Enter to use custom item.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div 
+                          onClick={() => handleStartEditingProduct(entry)}
+                          style={{ 
+                            cursor: 'pointer', 
+                            fontWeight: 600, 
+                            minHeight: '34px', 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid transparent',
+                            transition: 'var(--transition-fast)'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                        >
+                          {entry.name || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Search/Select Menu Product...</span>}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* SKU */}
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', verticalAlign: 'middle' }}>
+                      {entry.sku || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Not mapped</span>}
+                    </td>
+
+                    {/* Quantity Sold */}
+                    <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      <input
+                        type="text"
+                        className="input-field"
+                        value={entry.quantitySold === undefined ? '' : entry.quantitySold}
+                        onChange={(e) => handleRowChange(entry._id, 'quantitySold', e.target.value)}
+                        style={{ 
+                          textAlign: 'center', 
+                          height: '34px', 
+                          fontSize: '0.85rem', 
+                          width: '90px', 
+                          margin: '0 auto', 
+                          background: 'rgba(0,0,0,0.2)', 
+                          border: '1px solid rgba(255,255,255,0.08)' 
+                        }}
+                      />
+                    </td>
+
+                    {/* Price */}
+                    <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      <input
+                        type="text"
+                        className="input-field"
+                        value={entry.price === undefined ? '' : entry.price}
+                        onChange={(e) => handleRowChange(entry._id, 'price', e.target.value)}
+                        style={{ 
+                          textAlign: 'center', 
+                          height: '34px', 
+                          fontSize: '0.85rem', 
+                          width: '100px', 
+                          margin: '0 auto', 
+                          background: 'rgba(0,0,0,0.2)', 
+                          border: '1px solid rgba(255,255,255,0.08)' 
+                        }}
+                      />
+                    </td>
+
+                    {/* Action */}
+                    <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => handleDeleteRow(entry._id)}
+                        style={{ color: 'var(--danger)', padding: '0.45rem', borderColor: 'transparent', background: 'transparent' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Save / Discard Controls */}
+        {isModified && (
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', animation: 'animate-fade-in 0.2s', width: '320px', alignSelf: 'flex-start' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSaveSales}
+              disabled={loading}
+              style={{ flex: 1 }}
+            >
+              {loading ? 'Saving...' : 'Save Sales Entries'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleDiscardChanges}
+              disabled={loading}
+              style={{ flex: 1 }}
+            >
+              Discard
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
