@@ -13,6 +13,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   const [selectedHistorySession, setSelectedHistorySession] = useState(null);
   const [detailsSearchQuery, setDetailsSearchQuery] = useState('');
   const [detailsCurrentPage, setDetailsCurrentPage] = useState(1);
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'variance', 'loss', 'overage', 'ontarget'
   const itemsPerPage = 25;
 
   // Find session for selected Date
@@ -113,16 +114,6 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   const activeAuditSession = selectedHistorySession || (showSelectedVariance ? dateSession : null);
 
   if (activeAuditSession) {
-    const filteredDetails = activeAuditSession.variance.filter(v => {
-      const name = v.rawItemId?.name || 'Unknown';
-      return name.toLowerCase().includes(detailsSearchQuery.toLowerCase());
-    });
-
-    const totalPagesDetails = Math.ceil(filteredDetails.length / itemsPerPage) || 1;
-    const activePageDetails = Math.min(detailsCurrentPage, totalPagesDetails);
-    const startIndexDetails = (activePageDetails - 1) * itemsPerPage;
-    const paginatedDetails = filteredDetails.slice(startIndexDetails, startIndexDetails + itemsPerPage);
-
     let totalItems = activeAuditSession.variance.length;
     let shortageCount = 0;
     let overageCount = 0;
@@ -141,6 +132,32 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
       }
     });
 
+    const filteredDetails = activeAuditSession.variance.filter(v => {
+      const name = v.rawItemId?.name || 'Unknown';
+      const matchesSearch = name.toLowerCase().includes(detailsSearchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      const val = v.varianceValue;
+      if (activeFilter === 'variance') {
+        return Math.abs(val) > 0.05;
+      }
+      if (activeFilter === 'loss') {
+        return val < -0.05;
+      }
+      if (activeFilter === 'overage') {
+        return val > 0.05;
+      }
+      if (activeFilter === 'ontarget') {
+        return Math.abs(val) <= 0.05;
+      }
+      return true; // 'all'
+    });
+
+    const totalPagesDetails = Math.ceil(filteredDetails.length / itemsPerPage) || 1;
+    const activePageDetails = Math.min(detailsCurrentPage, totalPagesDetails);
+    const startIndexDetails = (activePageDetails - 1) * itemsPerPage;
+    const paginatedDetails = filteredDetails.slice(startIndexDetails, startIndexDetails + itemsPerPage);
+
     return (
       <div className="animate-fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -152,6 +169,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                 setSelectedHistorySession(null);
                 setDetailsSearchQuery('');
                 setDetailsCurrentPage(1);
+                setActiveFilter('all');
               }} 
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', fontSize: '0.85rem', marginBottom: '0.75rem' }}
             >
@@ -180,32 +198,117 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
 
         {/* Audit Stats Panel */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-          <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div 
+            className="card" 
+            onClick={() => { setActiveFilter('all'); setDetailsCurrentPage(1); }}
+            style={{ 
+              padding: '1.25rem', 
+              textAlign: 'center', 
+              cursor: 'pointer',
+              border: activeFilter === 'all' ? '2px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.04)',
+              transition: 'var(--transition-smooth)'
+            }}
+          >
             <div style={{ fontSize: '2rem', fontWeight: 700, color: '#fff' }}>{totalItems}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', textTransform: 'uppercase' }}>Audited Items</div>
           </div>
-          <div className="card" style={{ padding: '1.25rem', textAlign: 'center', background: shortageCount > 0 ? 'var(--danger-glow)' : 'rgba(255, 255, 255, 0.02)', border: shortageCount > 0 ? '1px solid rgba(239, 68, 68, 0.15)' : '1px solid rgba(255, 255, 255, 0.04)' }}>
+          <div 
+            className="card" 
+            onClick={() => { setActiveFilter('loss'); setDetailsCurrentPage(1); }}
+            style={{ 
+              padding: '1.25rem', 
+              textAlign: 'center', 
+              cursor: 'pointer',
+              background: shortageCount > 0 ? 'var(--danger-glow)' : 'rgba(255, 255, 255, 0.02)', 
+              border: activeFilter === 'loss' ? '2px solid var(--danger)' : (shortageCount > 0 ? '1px solid rgba(239, 68, 68, 0.15)' : '1px solid rgba(255, 255, 255, 0.04)'),
+              transition: 'var(--transition-smooth)'
+            }}
+          >
             <div style={{ fontSize: '2rem', fontWeight: 700, color: shortageCount > 0 ? 'var(--danger)' : '#fff' }}>{shortageCount}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', textTransform: 'uppercase' }}>Loss Count</div>
           </div>
-          <div className="card" style={{ padding: '1.25rem', textAlign: 'center', background: overageCount > 0 ? 'var(--success-glow)' : 'rgba(255, 255, 255, 0.02)', border: overageCount > 0 ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255, 255, 255, 0.04)' }}>
+          <div 
+            className="card" 
+            onClick={() => { setActiveFilter('overage'); setDetailsCurrentPage(1); }}
+            style={{ 
+              padding: '1.25rem', 
+              textAlign: 'center', 
+              cursor: 'pointer',
+              background: overageCount > 0 ? 'var(--success-glow)' : 'rgba(255, 255, 255, 0.02)', 
+              border: activeFilter === 'overage' ? '2px solid var(--success)' : (overageCount > 0 ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255, 255, 255, 0.04)'),
+              transition: 'var(--transition-smooth)'
+            }}
+          >
             <div style={{ fontSize: '2rem', fontWeight: 700, color: overageCount > 0 ? 'var(--success)' : '#fff' }}>{overageCount}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', textTransform: 'uppercase' }}>Overage Count</div>
           </div>
-          <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div 
+            className="card" 
+            onClick={() => { setActiveFilter('ontarget'); setDetailsCurrentPage(1); }}
+            style={{ 
+              padding: '1.25rem', 
+              textAlign: 'center', 
+              cursor: 'pointer',
+              border: activeFilter === 'ontarget' ? '2px solid var(--success)' : '1px solid rgba(255, 255, 255, 0.04)',
+              transition: 'var(--transition-smooth)'
+            }}
+          >
             <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>{onTargetCount}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', textTransform: 'uppercase' }}>On Target</div>
           </div>
-          <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
+          <div className="card" style={{ padding: '1.25rem', textAlign: 'center', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
             <div style={{ fontSize: '2rem', fontWeight: 700, color: totalLoss > 0 ? 'var(--danger)' : '#fff' }}>-{totalLoss.toFixed(1)}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', textTransform: 'uppercase' }}>Total Net Loss</div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" style={{ overflow: 'visible' }}>
           <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Clipboard size={20} style={{ color: 'var(--primary)' }} /> Variance Report Details
           </h2>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn ${activeFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+              onClick={() => { setActiveFilter('all'); setDetailsCurrentPage(1); }}
+            >
+              All Items ({totalItems})
+            </button>
+            <button
+              type="button"
+              className={`btn ${activeFilter === 'variance' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderColor: activeFilter === 'variance' ? '' : 'rgba(249, 115, 22, 0.15)', color: activeFilter === 'variance' ? '' : 'var(--primary)' }}
+              onClick={() => { setActiveFilter('variance'); setDetailsCurrentPage(1); }}
+            >
+              Discrepancies Only ({shortageCount + overageCount})
+            </button>
+            <button
+              type="button"
+              className={`btn ${activeFilter === 'loss' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderColor: activeFilter === 'loss' ? '' : 'rgba(239, 68, 68, 0.15)', color: activeFilter === 'loss' ? '' : 'var(--danger)' }}
+              onClick={() => { setActiveFilter('loss'); setDetailsCurrentPage(1); }}
+            >
+              Losses ({shortageCount})
+            </button>
+            <button
+              type="button"
+              className={`btn ${activeFilter === 'overage' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderColor: activeFilter === 'overage' ? '' : 'rgba(16, 185, 129, 0.15)', color: activeFilter === 'overage' ? '' : 'var(--success)' }}
+              onClick={() => { setActiveFilter('overage'); setDetailsCurrentPage(1); }}
+            >
+              Overages ({overageCount})
+            </button>
+            <button
+              type="button"
+              className={`btn ${activeFilter === 'ontarget' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderColor: activeFilter === 'ontarget' ? '' : 'rgba(16, 185, 129, 0.15)', color: activeFilter === 'ontarget' ? '' : 'var(--success)' }}
+              onClick={() => { setActiveFilter('ontarget'); setDetailsCurrentPage(1); }}
+            >
+              On Target ({onTargetCount})
+            </button>
+          </div>
 
           <div className="search-container" style={{ position: 'relative', marginBottom: '1.25rem' }}>
             <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={18} />
