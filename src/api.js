@@ -250,17 +250,34 @@ export const api = {
   },
 
   // Manager Operations
-  createStaffUser: async (username, password, restaurantId) => {
+  createStaffUser: async (username, password, restaurantId, role) => {
     const res = await fetch(`${API_BASE_URL}/manager/staff`, {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ username, password, restaurantId }),
+      body: JSON.stringify({ username, password, restaurantId, role }),
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
   getStaffUsers: async (restaurantId) => {
     const res = await fetch(`${API_BASE_URL}/manager/staff?restaurantId=${restaurantId}`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  updateStaffUser: async (id, username, password, role) => {
+    const res = await fetch(`${API_BASE_URL}/manager/staff/${id}`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ username, password, role }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  deleteStaffUser: async (id) => {
+    const res = await fetch(`${API_BASE_URL}/manager/staff/${id}`, {
+      method: 'DELETE',
       headers: getHeaders()
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));

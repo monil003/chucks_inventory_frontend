@@ -4,11 +4,12 @@ import Dashboard from './pages/Dashboard';
 import RawItems from './pages/RawItems';
 import Recipes from './pages/Recipes';
 import DayInventoryCount from './pages/DayInventoryCount';
+import LiquorStockCount from './pages/LiquorStockCount';
 import DayEndSales from './pages/DayEndSales';
 import AdminPanel from './pages/AdminPanel';
 import Setup from './pages/Setup';
 import CsvMapping from './pages/CsvMapping';
-import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload, Sliders } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload, Sliders, Wine } from 'lucide-react';
 import './App.css';
 
 export default function App() {
@@ -22,7 +23,8 @@ export default function App() {
     if (saved) {
       const user = JSON.parse(saved);
       if (user.role === 'admin') return 'admin-panel';
-      if (user.role === 'staff') return 'inventory-count';
+      if (user.role === 'staff' || user.role === 'food_access') return 'inventory-count';
+      if (user.role === 'liquor_access') return 'liquor-count';
       return 'dashboard';
     }
     return 'dashboard';
@@ -191,8 +193,10 @@ export default function App() {
     // Pick default landing tab
     if (user.role === 'admin') {
       setActiveTab('admin-panel');
-    } else if (user.role === 'staff') {
+    } else if (user.role === 'staff' || user.role === 'food_access') {
       setActiveTab('inventory-count');
+    } else if (user.role === 'liquor_access') {
+      setActiveTab('liquor-count');
     } else {
       setActiveTab('dashboard');
     }
@@ -350,7 +354,7 @@ export default function App() {
             </div>
           )}
 
-          {currentUser.role !== 'staff' && (
+          {currentUser.role !== 'staff' && currentUser.role !== 'food_access' && currentUser.role !== 'liquor_access' && (
             <>
               <div 
                 className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
@@ -381,16 +385,29 @@ export default function App() {
             </>
           )}
 
-          <div 
-            className={`nav-item ${activeTab === 'inventory-count' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
-            onClick={() => activeRestaurant && handleNavClick('inventory-count')}
-            title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
-          >
-            <ClipboardList className="nav-icon" />
-            Day Stock Count
-          </div>
+          {(currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'staff' || currentUser.role === 'food_access') && (
+            <div 
+              className={`nav-item ${activeTab === 'inventory-count' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
+              onClick={() => activeRestaurant && handleNavClick('inventory-count')}
+              title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
+            >
+              <ClipboardList className="nav-icon" />
+              Food Stock Count
+            </div>
+          )}
 
-          {currentUser.role !== 'staff' && (
+          {(currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'liquor_access') && (
+            <div 
+              className={`nav-item ${activeTab === 'liquor-count' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
+              onClick={() => activeRestaurant && handleNavClick('liquor-count')}
+              title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
+            >
+              <Wine className="nav-icon" />
+              Liquor Stock Count
+            </div>
+          )}
+
+          {currentUser.role !== 'staff' && currentUser.role !== 'food_access' && currentUser.role !== 'liquor_access' && (
             <div 
               className={`nav-item ${activeTab === 'end-sales' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
               onClick={() => activeRestaurant && handleNavClick('end-sales')}
@@ -541,6 +558,10 @@ export default function App() {
                 completedSessions={sessions.filter(s => s.status === 'completed')}
                 onRefreshAll={loadData}
               />
+            )}
+
+            {activeTab === 'liquor-count' && activeRestaurant && (
+              <LiquorStockCount />
             )}
 
             {activeTab === 'end-sales' && activeRestaurant && (

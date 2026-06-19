@@ -96,7 +96,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   const handleExportCSV = (sess) => {
     if (!sess) return;
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Ingredient,Unit,Initial Count,Used Count,Expected Remaining,Actual Count,Variance\n";
+    csvContent += "Ingredient,Unit,Initial Count,Sold,Expected Remaining,Actual Count,Lost\n";
     sess.variance.forEach(v => {
       const name = v.rawItemId?.name || 'Unknown';
       const unit = v.rawItemId?.unit || '';
@@ -329,10 +329,10 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                   <th>Ingredient</th>
                   <th>Unit</th>
                   <th style={{ textAlign: 'right' }}>Initial Count</th>
-                  <th style={{ textAlign: 'right' }}>Expected Usage</th>
+                  <th style={{ textAlign: 'right' }}>Sold</th>
                   <th style={{ textAlign: 'right' }}>Expected Remaining</th>
                   <th style={{ textAlign: 'right' }}>Actual Count</th>
-                  <th style={{ width: '120px', textAlign: 'center' }}>Variance</th>
+                  <th style={{ width: '120px', textAlign: 'center' }}>Lost</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,10 +350,10 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                         </span>
                       </td>
                       <td data-label="Initial Count" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.initial.toFixed(1)}</td>
-                      <td data-label="Expected Usage" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.usage.toFixed(1)}</td>
+                      <td data-label="Sold" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.usage.toFixed(1)}</td>
                       <td data-label="Exp. Remaining" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{v.expectedFinal.toFixed(1)}</td>
                       <td data-label="Actual Count" style={{ textAlign: 'right', fontWeight: 600 }}>{v.actualFinal.toFixed(1)}</td>
-                      <td data-label="Variance" style={{ textAlign: 'center' }}>
+                      <td data-label="Lost" style={{ textAlign: 'center' }}>
                         {diff > 0.05 ? (
                           <span className="badge" style={{ background: 'var(--success-glow)', border: '1px solid rgba(16, 185, 129, 0.2)', color: 'var(--success)', fontWeight: 600 }}>
                             +{diff.toFixed(1)}

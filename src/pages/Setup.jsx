@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { UserPlus, Plus, Store, Users, CheckCircle, Clock, ShieldAlert, KeyRound } from 'lucide-react';
+import { UserPlus, Plus, Store, Users, CheckCircle, Clock, ShieldAlert, KeyRound, Trash2, Edit2, X } from 'lucide-react';
 
 export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) {
   const [staffList, setStaffList] = useState([]);
   const [staffUsername, setStaffUsername] = useState('');
   const [staffPassword, setStaffPassword] = useState('');
+  const [staffRole, setStaffRole] = useState('food_access');
+  const [editingStaff, setEditingStaff] = useState(null);
   const [newRestName, setNewRestName] = useState('');
   
   const [loadingStaff, setLoadingStaff] = useState(false);
@@ -41,8 +43,13 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
     setStaffError('');
     setStaffSuccess('');
     
-    if (!staffUsername.trim() || !staffPassword.trim()) {
-      setStaffError('Username and password are required');
+    if (!staffUsername.trim()) {
+      setStaffError('Username/Email is required');
+      return;
+    }
+
+    if (!editingStaff && !staffPassword.trim()) {
+      setStaffError('Password is required for new staff accounts');
       return;
     }
     
@@ -53,15 +60,43 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
     
     setSubmittingStaff(true);
     try {
-      await api.createStaffUser(staffUsername.trim(), staffPassword.trim(), activeRestaurant._id);
-      setStaffSuccess(`Staff account "${staffUsername}" created successfully!`);
+      if (editingStaff) {
+        await api.updateStaffUser(editingStaff._id, staffUsername.trim(), staffPassword.trim() || undefined, staffRole);
+        setStaffSuccess(`Staff account "${staffUsername}" updated successfully!`);
+        setEditingStaff(null);
+      } else {
+        await api.createStaffUser(staffUsername.trim(), staffPassword.trim(), activeRestaurant._id, staffRole);
+        setStaffSuccess(`Staff account "${staffUsername}" created successfully!`);
+      }
       setStaffUsername('');
       setStaffPassword('');
+      setStaffRole('food_access');
       loadStaff();
     } catch (err) {
-      setStaffError(err.message || 'Failed to create staff account.');
+      setStaffError(err.message || 'Failed to save staff account.');
     } finally {
       setSubmittingStaff(false);
+    }
+  };
+
+  const handleDeleteStaff = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete staff account "${name}"?`)) {
+      return;
+    }
+    setStaffError('');
+    setStaffSuccess('');
+    try {
+      await api.deleteStaffUser(id);
+      setStaffSuccess(`Staff account "${name}" deleted successfully!`);
+      if (editingStaff?._id === id) {
+        setEditingStaff(null);
+        setStaffUsername('');
+        setStaffPassword('');
+        setStaffRole('food_access');
+      }
+      loadStaff();
+    } catch (err) {
+      setStaffError(err.message || 'Failed to delete staff account.');
     }
   };
 
@@ -107,8 +142,12 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
               <Users size={20} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Staff Credentials</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Create access logins for your kitchen & stock count team</p>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {editingStaff ? 'Edit Staff Credentials' : 'Staff Credentials'}
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                {editingStaff ? `Modifying credentials for "${editingStaff.username}"` : 'Create access logins for your kitchen & stock count team'}
+              </p>
             </div>
           </div>
 
@@ -163,15 +202,47 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
               />
             </div>
 
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Role Permission</label>
+              <select
+                className="input-field"
+                value={staffRole}
+                onChange={(e) => setStaffRole(e.target.value)}
+                disabled={submittingStaff || !activeRestaurant}
+                style={{ background: 'rgba(0, 0, 0, 0.2)', cursor: 'pointer' }}
+              >
+                <option value="manager">Manager (All Setup Access)</option>
+                <option value="food_access">Food Access (Enter Food Count Only)</option>
+                <option value="liquor_access">Liquor Access (Enter Liquor Count Only)</option>
+              </select>
+            </div>
+
             <button
               type="submit"
               className="btn btn-primary"
               disabled={submittingStaff || !activeRestaurant}
               style={{ padding: '0.75rem', width: '100%', marginTop: '0.5rem' }}
             >
-              <UserPlus size={16} />
-              {submittingStaff ? 'Creating Staff Account...' : 'Generate Staff Credentials'}
+              {editingStaff ? <CheckCircle size={16} /> : <UserPlus size={16} />}
+              {submittingStaff ? (editingStaff ? 'Saving Changes...' : 'Creating Staff Account...') : (editingStaff ? 'Save Staff Changes' : 'Generate Staff Credentials')}
             </button>
+            {editingStaff && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setEditingStaff(null);
+                  setStaffUsername('');
+                  setStaffPassword('');
+                  setStaffRole('food_access');
+                  setStaffError('');
+                  setStaffSuccess('');
+                }}
+                style={{ padding: '0.75rem', width: '100%', marginTop: '0.25rem' }}
+              >
+                <X size={16} /> Cancel Editing
+              </button>
+            )}
           </form>
 
           <div style={{ marginTop: '1rem' }}>
@@ -185,12 +256,50 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
                 {staffList.map(member => (
                   <div
                     key={member._id}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between', 
+                      padding: '0.65rem 0.85rem', 
+                      borderRadius: '10px', 
+                      background: editingStaff?._id === member._id ? 'rgba(249, 115, 22, 0.08)' : 'rgba(255, 255, 255, 0.02)', 
+                      border: editingStaff?._id === member._id ? '1px solid rgba(249, 115, 22, 0.2)' : '1px solid rgba(255,255,255,0.04)' 
+                    }}
                   >
-                    <div style={{ fontWeight: 500, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{member.username}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      <KeyRound size={12} />
-                      Role: Staff
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{member.username}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                        <KeyRound size={12} />
+                        Role: {member.role === 'manager' ? 'Manager' : member.role === 'liquor_access' ? 'Liquor Access' : member.role === 'food_access' ? 'Food Access' : member.role === 'staff' ? 'Food Access (Legacy)' : member.role}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStaff(member);
+                          setStaffUsername(member.username);
+                          setStaffPassword('');
+                          setStaffRole(member.role);
+                          setStaffError('');
+                          setStaffSuccess('');
+                        }}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.35rem 0.5rem', color: 'var(--primary)', borderColor: 'rgba(249, 115, 22, 0.15)', display: 'inline-flex', alignItems: 'center' }}
+                        title="Edit credentials"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStaff(member._id, member.username)}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.35rem 0.5rem', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.15)', display: 'inline-flex', alignItems: 'center' }}
+                        title="Remove credentials"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
