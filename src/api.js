@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://chucks-inventory-backend-6u9k.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://chucks-inventory-backend.onrender.com/api';
 
 const getActiveRestaurantId = () => {
   const saved = localStorage.getItem('activeRestaurant');
@@ -190,6 +190,33 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/sessions/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  parseInvoice: async (formData) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/parse-invoice`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  parseSalesReport: async (formData) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/parse-sales-report`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  generateIntervalReport: async (payload) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/generate-interval-report`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();

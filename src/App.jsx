@@ -9,7 +9,8 @@ import DayEndSales from './pages/DayEndSales';
 import AdminPanel from './pages/AdminPanel';
 import Setup from './pages/Setup';
 import CsvMapping from './pages/CsvMapping';
-import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload, Sliders, Wine } from 'lucide-react';
+import AuditReportGenerator from './pages/AuditReportGenerator';
+import { LayoutDashboard, ClipboardList, ChefHat, Activity, ServerCrash, Menu, X, LogOut, ShieldAlert, Store, Clock, Upload, Sliders, Wine, FileText } from 'lucide-react';
 import './App.css';
 
 export default function App() {
@@ -418,6 +419,17 @@ export default function App() {
             </div>
           )}
 
+          {currentUser.role !== 'staff' && currentUser.role !== 'food_access' && currentUser.role !== 'liquor_access' && (
+            <div 
+              className={`nav-item ${activeTab === 'audit-reports' ? 'active' : ''} ${!activeRestaurant ? 'btn-disabled' : ''}`}
+              onClick={() => activeRestaurant && handleNavClick('audit-reports')}
+              title={!activeRestaurant ? 'Awaiting approved restaurant context' : ''}
+            >
+              <FileText className="nav-icon" />
+              Audit Reports
+            </div>
+          )}
+
           {currentUser.role === 'manager' && (
             <div 
               className={`nav-item ${activeTab === 'setup' ? 'active' : ''}`}
@@ -566,6 +578,15 @@ export default function App() {
 
             {activeTab === 'end-sales' && activeRestaurant && (
               <DayEndSales 
+                recipes={recipes}
+                onRefreshAll={loadData}
+              />
+            )}
+
+            {activeTab === 'audit-reports' && activeRestaurant && (
+              <AuditReportGenerator 
+                sessions={sessions}
+                rawItems={rawItems}
                 recipes={recipes}
                 onRefreshAll={loadData}
               />

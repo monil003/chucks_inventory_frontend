@@ -4,6 +4,7 @@ import {
   BarChart3, Package, BookOpen, AlertTriangle, CheckCircle, Calendar, 
   Trash2, Eye, ArrowLeft, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Clipboard, Upload, CheckCircle2, XCircle, Clock
 } from 'lucide-react';
+import InventoryCalendar from '../components/InventoryCalendar';
 
 export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession, onViewTab }) {
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -111,7 +112,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
     document.body.removeChild(link);
   };
 
-  const activeAuditSession = selectedHistorySession || (showSelectedVariance ? dateSession : null);
+  const activeAuditSession = selectedHistorySession;
 
   if (activeAuditSession) {
     let totalItems = activeAuditSession.variance.length;
@@ -434,78 +435,90 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
         </div>
       </div>
 
-      {/* Audit Progress Tracking Section */}
-      <div className="card" style={{ marginBottom: '2rem', padding: '2rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-          Daily Audit Tracker: {selectedDate}
-        </h2>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-          Check and execute the required stages to generate the variance analysis report for this date
-        </p>
+      {/* 2-Column top dashboard grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', marginBottom: '2rem', alignItems: 'start' }}>
+        
+        {/* Left Column: Audit Progress Tracking Section */}
+        <div className="card" style={{ padding: '2rem', margin: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+            Daily Audit Tracker: {selectedDate}
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+            Check and execute the required stages to generate the variance analysis report for this date
+          </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-          {/* Stage 1: Starting Stock */}
-          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isStartCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 1</span>
-              {isStartCountDone ? (
-                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
-              ) : (
-                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
-              )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', flexGrow: 1 }}>
+            {/* Stage 1: Starting Stock */}
+            <div style={{ padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isStartCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 1</span>
+                {isStartCountDone ? (
+                  <span className="badge badge-success" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><CheckCircle size={8} /> Done</span>
+                ) : (
+                  <span className="badge badge-warning" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><Clock size={8} /> Pending</span>
+                )}
+              </div>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Day Start Count</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', flexGrow: 1, margin: 0 }}>Opening stock counts entered for auditing.</p>
+              <button 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.75rem', padding: '0.35rem', width: '100%', marginTop: '0.5rem' }}
+                onClick={() => onViewTab('inventory-count')}
+              >
+                {isStartCountDone ? 'Modify Counts' : 'Enter Starting Stock'}
+              </button>
             </div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day Start Count</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Opening stock counts entered for auditing.</p>
-            <button 
-              className="btn btn-secondary" 
-              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
-              onClick={() => onViewTab('inventory-count')}
-            >
-              {isStartCountDone ? 'Modify Counts' : 'Enter Starting Stock'}
-            </button>
-          </div>
 
-          {/* Stage 2: POS Sales */}
-          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isSalesUploaded ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 2</span>
-              {isSalesUploaded ? (
-                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
-              ) : (
-                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
-              )}
+            {/* Stage 2: POS Sales */}
+            <div style={{ padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isSalesUploaded ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 2</span>
+                {isSalesUploaded ? (
+                  <span className="badge badge-success" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><CheckCircle size={8} /> Done</span>
+                ) : (
+                  <span className="badge badge-warning" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><Clock size={8} /> Pending</span>
+                )}
+              </div>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Day End Sales POS</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', flexGrow: 1, margin: 0 }}>Sales file uploaded to calculate portion depletion.</p>
+              <button 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.75rem', padding: '0.35rem', width: '100%', marginTop: '0.5rem' }}
+                onClick={() => onViewTab('end-sales')}
+              >
+                {isSalesUploaded ? 'Upload Different' : 'Upload POS CSV'}
+              </button>
             </div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day End Sales POS</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Sales file uploaded to calculate portion depletion.</p>
-            <button 
-              className="btn btn-secondary" 
-              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
-              onClick={() => onViewTab('end-sales')}
-            >
-              {isSalesUploaded ? 'Upload Different POS' : 'Upload POS CSV'}
-            </button>
-          </div>
 
-          {/* Stage 3: Day End Count */}
-          <div style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isEndCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 3</span>
-              {isEndCountDone ? (
-                <span className="badge badge-success"><CheckCircle size={10} /> Done</span>
-              ) : (
-                <span className="badge badge-warning"><Clock size={10} /> Pending</span>
-              )}
+            {/* Stage 3: Day End Count */}
+            <div style={{ padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)', background: isEndCountDone ? 'rgba(16, 185, 129, 0.03)' : 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)' }}>Stage 3</span>
+                {isEndCountDone ? (
+                  <span className="badge badge-success" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><CheckCircle size={8} /> Done</span>
+                ) : (
+                  <span className="badge badge-warning" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}><Clock size={8} /> Pending</span>
+                )}
+              </div>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Day End Count</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', flexGrow: 1, margin: 0 }}>Actual final stock counts entered for audit comparison.</p>
+              <button 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.75rem', padding: '0.35rem', width: '100%', marginTop: '0.5rem' }}
+                onClick={() => onViewTab('inventory-count')}
+              >
+                {isEndCountDone ? 'Modify Final' : 'Enter Closing Stock'}
+              </button>
             </div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Day End Count</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexGrow: 1 }}>Actual final stock counts entered for audit comparison.</p>
-            <button 
-              className="btn btn-secondary" 
-              style={{ fontSize: '0.8rem', padding: '0.4rem', width: '100%' }}
-              onClick={() => onViewTab('inventory-count')}
-            >
-              {isEndCountDone ? 'Modify Final Counts' : 'Enter Closing Stock'}
-            </button>
           </div>
+        </div>
+
+        {/* Right Column: Monthly Highlight Calendar */}
+        <div style={{ margin: 0 }}>
+          <InventoryCalendar 
+            sessions={sessions} 
+            onSelectDate={(dateStr) => setSelectedDate(dateStr)} 
+          />
         </div>
       </div>
 
@@ -572,7 +585,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
             <button 
               className="btn btn-primary" 
               style={{ flex: 1, padding: '0.85rem' }} 
-              onClick={() => setSelectedHistorySession(null)}
+              onClick={() => setSelectedHistorySession(dateSession)}
             >
               <Eye size={16} /> Load Interactive Audit Details for {selectedDate}
             </button>
