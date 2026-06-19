@@ -286,6 +286,11 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   <option value="g">Grams (g)</option>
                   <option value="ml">Milliliters (ml)</option>
                   <option value="L">Liters (L)</option>
+                  <option value="oz/box">oz/box</option>
+                  <option value="oz/pk">oz/pk</option>
+                  <option value="oz/bucket">oz/bucket</option>
+                  <option value="pcs/box">pcs/box</option>
+                  <option value="pcs/pk">pcs/pk</option>
                 </select>
               </div>
 
