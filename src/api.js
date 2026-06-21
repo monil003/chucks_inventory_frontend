@@ -159,6 +159,15 @@ export const api = {
     if (!res.ok) throw new Error(await getErrorMessage(res));
     return res.json();
   },
+  saveDeliveries: async (date, deliveries) => {
+    const res = await fetch(`${API_BASE_URL}/sessions/save-deliveries`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ date, deliveries }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
   uploadSales: async (date, formData) => {
     const res = await fetch(`${API_BASE_URL}/sessions/upload-sales?date=${date}`, {
       method: 'POST',

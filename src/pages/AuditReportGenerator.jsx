@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { Calendar, Upload, Plus, Trash2, Edit2, Check, X, ShieldAlert, Sparkles, RefreshCw, Clipboard, FileText } from 'lucide-react';
+import { Calendar, Upload, Plus, Trash2, Edit2, Check, X, ShieldAlert, Sparkles, RefreshCw, Clipboard, FileText, Search } from 'lucide-react';
 import InventoryCalendar from '../components/InventoryCalendar';
+
+function getDatesInRange(startDateStr, endDateStr) {
+  const dates = [];
+  if (!startDateStr || !endDateStr) return dates;
+  let curr = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  while (curr <= end) {
+    dates.push(curr.toISOString().split('T')[0]);
+    curr.setDate(curr.getDate() + 1);
+  }
+  return dates;
+}
 
 export default function AuditReportGenerator({ sessions = [], rawItems, recipes, onRefreshAll }) {
   const [startDate, setStartDate] = useState(() => {
@@ -16,7 +28,6 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   const [startingCounts, setStartingCounts] = useState({});
   const [loadingStartingCounts, setLoadingStartingCounts] = useState(false);
   const [startingCountsMessage, setStartingCountsMessage] = useState('');
-  const [calendarClickTarget, setCalendarClickTarget] = useState('start');
   const [isPeriodCountsModalOpen, setIsPeriodCountsModalOpen] = useState(false);
 
   // Local state for deliveries (Invoice items)
@@ -30,6 +41,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   const [endingCounts, setEndingCounts] = useState({});
   const [endingBoxesInput, setEndingBoxesInput] = useState({});
   const [endingLooseInput, setEndingLooseInput] = useState({});
+  const [loadingEndingCounts, setLoadingEndingCounts] = useState(false);
+  const [endingCountsMessage, setEndingCountsMessage] = useState('');
 
   // Gemini extraction states
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -49,31 +62,99 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   const [generatedReport, setGeneratedReport] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
 
-  // Load starting counts when startDate changes
+  // Edit Modals state
+  const [isEditDeliveriesModalOpen, setIsEditDeliveriesModalOpen] = useState(false);
+  const [editDeliveriesSearch, setEditDeliveriesSearch] = useState('');
+  const [editDeliveriesSelectedId, setEditDeliveriesSelectedId] = useState('');
+
+  const [isEditSalesModalOpen, setIsEditSalesModalOpen] = useState(false);
+  const [editSalesSearch, setEditSalesSearch] = useState('');
+
+  // Main Tab Navigation state
+  const [activeMainTab, setActiveMainTab] = useState('report'); // 'report' | 'deliveries' | 'sales'
+
+  // Manage state
+  const [manageDateMode, setManageDateMode] = useState('single'); // 'single' | 'range'
+  const [manageDate, setManageDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manageStartDate, setManageStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [manageEndDate, setManageEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manageRangeClickTarget, setManageRangeClickTarget] = useState('start'); // 'start' | 'end'
+
+  const [manageDeliveries, setManageDeliveries] = useState([]);
+  const [manageSales, setManageSales] = useState([]);
+  const [manageSalesFileName, setManageSalesFileName] = useState('');
+  const [loadingManageData, setLoadingManageData] = useState(false);
+  const [searchManageDeliveries, setSearchManageDeliveries] = useState('');
+  const [searchManageSales, setSearchManageSales] = useState('');
+
+  // New entries states
+  const [newDeliveryRawItemId, setNewDeliveryRawItemId] = useState('');
+  const [newDeliveryQuantity, setNewDeliveryQuantity] = useState('');
+  const [newDeliveryPrice, setNewDeliveryPrice] = useState('');
+  const [newDeliveryDate, setNewDeliveryDate] = useState('');
+
+  const [newSalesSku, setNewSalesSku] = useState('');
+  const [newSalesQuantitySold, setNewSalesQuantitySold] = useState('');
+  const [newSalesPrice, setNewSalesPrice] = useState('');
+  const [newSalesDate, setNewSalesDate] = useState('');
+
+  // Load starting counts when startDate or endDate changes
   const fetchStartingCounts = async () => {
-    if (!startDate) return;
+    if (!startDate || !endDate) return;
     setLoadingStartingCounts(true);
     setStartingCountsMessage('');
     try {
-      const sess = await api.getSessionByDate(startDate);
+      const startD = new Date(startDate);
+      startD.setUTCHours(0,0,0,0);
+      const endD = new Date(endDate);
+      endD.setUTCHours(0,0,0,0);
+
+      const targetSessions = sessions.filter(sess => {
+        if (!sess.date) return false;
+        const d = new Date(sess.date);
+        d.setUTCHours(0,0,0,0);
+        if (endD > startD) {
+          return d >= startD && d < endD;
+        } else {
+          return d.getTime() === startD.getTime();
+        }
+      });
+
       const counts = {};
       rawItems.forEach(item => {
         counts[item._id] = 0;
       });
 
-      if (sess) {
-        const inventoryToUse = sess.actualFinalInventory && sess.actualFinalInventory.length > 0
-          ? sess.actualFinalInventory
-          : sess.initialInventory;
-
-        inventoryToUse.forEach(item => {
-          counts[item.rawItemId._id || item.rawItemId] = item.quantity;
+      if (targetSessions.length > 0) {
+        targetSessions.forEach(sess => {
+          const inventoryToUse = sess.actualFinalInventory && sess.actualFinalInventory.length > 0
+            ? sess.actualFinalInventory 
+            : sess.initialInventory;
+          
+          if (inventoryToUse) {
+            inventoryToUse.forEach(item => {
+              if (!item.rawItemId) return;
+              const id = item.rawItemId._id || item.rawItemId;
+              if (id && counts[id.toString()] !== undefined) {
+                counts[id.toString()] += item.quantity || 0;
+              }
+            });
+          }
         });
+
+        const activeDates = targetSessions.map(sess => {
+          return new Date(sess.date).toISOString().split('T')[0];
+        }).sort();
+
         setStartingCounts(counts);
-        setStartingCountsMessage(`Found inventory count record logged on ${startDate}. Starting count successfully loaded.`);
+        setStartingCountsMessage(`Found inventory count records logged on: ${activeDates.join(', ')}. Starting count successfully loaded.`);
       } else {
         setStartingCounts(counts);
-        setStartingCountsMessage(`No inventory session found on ${startDate}. Starting stock counts will default to 0.`);
+        setStartingCountsMessage(`No inventory session found between ${startDate} and before ${endDate}. Starting stock counts will default to 0.`);
       }
     } catch (err) {
       console.error(err);
@@ -83,32 +164,377 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
     }
   };
 
-  const handleCalendarDateSelect = (dateStr) => {
-    if (calendarClickTarget === 'start') {
-      setStartDate(dateStr);
-    } else {
-      setEndDate(dateStr);
+  // Load ending counts when endDate changes
+  const fetchEndingCounts = async () => {
+    if (!endDate) return;
+    setLoadingEndingCounts(true);
+    setEndingCountsMessage('');
+    try {
+      const sess = await api.getSessionByDate(endDate);
+      const counts = {};
+      const boxes = {};
+      const loose = {};
+      rawItems.forEach(item => {
+        counts[item._id] = 0;
+        boxes[item._id] = '';
+        loose[item._id] = '';
+      });
+
+      if (sess) {
+        const hasFinal = sess.actualFinalInventory && sess.actualFinalInventory.some(i => i.quantity > 0);
+        const hasInitial = sess.initialInventory && sess.initialInventory.some(i => i.quantity > 0);
+        const inventoryToUse = hasFinal ? sess.actualFinalInventory : (hasInitial ? sess.initialInventory : null);
+
+        if (inventoryToUse) {
+          inventoryToUse.forEach(item => {
+            if (!item.rawItemId) return;
+            const id = item.rawItemId._id || item.rawItemId;
+            const qty = item.quantity;
+            counts[id] = qty;
+
+            const rItem = rawItems.find(r => r._id === id.toString());
+            if (rItem && rItem.quantityPerBox > 0) {
+              const b = Math.floor(qty / rItem.quantityPerBox);
+              const l = qty % rItem.quantityPerBox;
+              boxes[id] = b === 0 ? '' : String(b);
+              loose[id] = l === 0 ? '' : String(l);
+            } else if (rItem) {
+              boxes[id] = '';
+              loose[id] = qty === 0 ? '' : String(qty);
+            }
+          });
+          setEndingCounts(counts);
+          setEndingBoxesInput(boxes);
+          setEndingLooseInput(loose);
+          setEndingCountsMessage(`Found inventory count record logged on ${endDate}. Closing counts pre-filled.`);
+        } else {
+          setEndingCounts(counts);
+          setEndingBoxesInput(boxes);
+          setEndingLooseInput(loose);
+          setEndingCountsMessage(`No counts logged on ${endDate}. Inputs initialized to 0.`);
+        }
+      } else {
+        setEndingCounts(counts);
+        setEndingBoxesInput(boxes);
+        setEndingLooseInput(loose);
+        setEndingCountsMessage(`No inventory session found on ${endDate}. Inputs initialized to 0.`);
+      }
+    } catch (err) {
+      console.error(err);
+      setEndingCountsMessage('Error reading closing counts from database.');
+    } finally {
+      setLoadingEndingCounts(false);
     }
   };
 
   useEffect(() => {
     fetchStartingCounts();
-  }, [startDate, rawItems]);
+  }, [startDate, endDate, rawItems, sessions]);
 
-  // Pre-populate ending counts list
   useEffect(() => {
-    const counts = {};
-    const boxes = {};
-    const loose = {};
-    rawItems.forEach(item => {
-      counts[item._id] = 0;
-      boxes[item._id] = '';
-      loose[item._id] = '';
-    });
-    setEndingCounts(counts);
-    setEndingBoxesInput(boxes);
-    setEndingLooseInput(loose);
-  }, [rawItems]);
+    fetchEndingCounts();
+  }, [endDate, rawItems]);
+
+  const fetchManageData = async () => {
+    setLoadingManageData(true);
+    try {
+      if (manageDateMode === 'single') {
+        if (!manageDate) return;
+        const sess = await api.getSessionByDate(manageDate);
+        if (sess) {
+          // Map deliveries to matching frontend structure: { rawItemId, name, quantity, price }
+          const mappedDeliveries = (sess.deliveries || []).map(d => {
+            const rawId = d.rawItemId?._id || d.rawItemId;
+            const rItem = rawItems.find(r => r._id === rawId?.toString());
+            return {
+              rawItemId: rawId?.toString() || '',
+              name: rItem ? rItem.name : 'Unknown Ingredient',
+              quantity: d.quantity || 0,
+              price: d.price || 0,
+              date: manageDate
+            };
+          });
+
+          setManageDeliveries(mappedDeliveries);
+          setManageSales(sess.salesData || []);
+          setManageSalesFileName(sess.salesFile || '');
+        } else {
+          setManageDeliveries([]);
+          setManageSales([]);
+          setManageSalesFileName('');
+        }
+      } else {
+        if (!manageStartDate || !manageEndDate) return;
+        // Find all sessions in range
+        const sessionsInRange = sessions.filter(sess => {
+          if (!sess.date) return false;
+          const dStr = new Date(sess.date).toISOString().split('T')[0];
+          return dStr >= manageStartDate && dStr <= manageEndDate;
+        });
+
+        const allDeliveries = [];
+        const allSales = [];
+
+        sessionsInRange.forEach(sess => {
+          const dStr = new Date(sess.date).toISOString().split('T')[0];
+          (sess.deliveries || []).forEach(d => {
+            const rawId = d.rawItemId?._id || d.rawItemId;
+            const rItem = rawItems.find(r => r._id === rawId?.toString());
+            allDeliveries.push({
+              rawItemId: rawId?.toString() || '',
+              name: rItem ? rItem.name : 'Unknown Ingredient',
+              quantity: d.quantity || 0,
+              price: d.price || 0,
+              date: dStr
+            });
+          });
+
+          (sess.salesData || []).forEach(s => {
+            allSales.push({
+              sku: s.sku || '',
+              name: s.name || '',
+              quantitySold: s.quantitySold || 0,
+              price: s.price || 0,
+              date: dStr
+            });
+          });
+        });
+
+        setManageDeliveries(allDeliveries);
+        setManageSales(allSales);
+        setManageSalesFileName('Range Combined Data');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Error loading date context data from database.');
+    } finally {
+      setLoadingManageData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeMainTab === 'deliveries' || activeMainTab === 'sales') {
+      fetchManageData();
+    }
+  }, [manageDate, manageStartDate, manageEndDate, manageDateMode, activeMainTab, sessions]);
+
+  const handleManageCalendarDateSelect = (dateStr) => {
+    if (manageDateMode === 'single') {
+      setManageDate(dateStr);
+    } else {
+      if (manageRangeClickTarget === 'start') {
+        setManageStartDate(dateStr);
+        setManageRangeClickTarget('end');
+      } else {
+        if (dateStr < manageStartDate) {
+          setManageStartDate(dateStr);
+          setManageRangeClickTarget('end');
+        } else {
+          setManageEndDate(dateStr);
+          setManageRangeClickTarget('start');
+        }
+      }
+    }
+  };
+
+  const handleToggleDateMode = (mode) => {
+    setManageDateMode(mode);
+    if (mode === 'single') {
+      if (manageStartDate) {
+        setManageDate(manageStartDate);
+      }
+    } else {
+      if (manageDate) {
+        setManageStartDate(manageDate);
+        setManageEndDate(manageDate);
+        setManageRangeClickTarget('start');
+      }
+    }
+  };
+
+  const handleSaveManageDeliveries = async () => {
+    setError('');
+    setSuccess('');
+    try {
+      if (manageDateMode === 'single') {
+        await api.saveDeliveries(manageDate, manageDeliveries);
+        setSuccess(`Deliveries saved successfully for ${manageDate}.`);
+      } else {
+        // Group manageDeliveries by item.date
+        const dateList = [];
+        let curr = new Date(manageStartDate);
+        const end = new Date(manageEndDate);
+        while (curr <= end) {
+          dateList.push(curr.toISOString().split('T')[0]);
+          curr.setDate(curr.getDate() + 1);
+        }
+
+        const grouped = {};
+        dateList.forEach(d => {
+          grouped[d] = [];
+        });
+
+        manageDeliveries.forEach(item => {
+          const itemDate = item.date || manageStartDate;
+          if (grouped[itemDate]) {
+            grouped[itemDate].push({
+              rawItemId: item.rawItemId,
+              quantity: item.quantity,
+              price: item.price
+            });
+          }
+        });
+
+        for (const d of dateList) {
+          await api.saveDeliveries(d, grouped[d]);
+        }
+        setSuccess(`Deliveries saved successfully for range ${manageStartDate} to ${manageEndDate}.`);
+      }
+      if (onRefreshAll) await onRefreshAll();
+    } catch (err) {
+      setError(err.message || 'Failed to save deliveries.');
+    }
+  };
+
+  const handleResetManageDeliveries = async () => {
+    const target = manageDateMode === 'single' ? manageDate : `range ${manageStartDate} to ${manageEndDate}`;
+    if (!window.confirm(`Are you sure you want to reset all deliveries to 0 for ${target}?`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      if (manageDateMode === 'single') {
+        await api.saveDeliveries(manageDate, []);
+        setManageDeliveries([]);
+      } else {
+        let curr = new Date(manageStartDate);
+        const end = new Date(manageEndDate);
+        while (curr <= end) {
+          const dStr = curr.toISOString().split('T')[0];
+          await api.saveDeliveries(dStr, []);
+          curr.setDate(curr.getDate() + 1);
+        }
+        setManageDeliveries([]);
+      }
+      setSuccess(`Deliveries reset to 0 for ${target}.`);
+      if (onRefreshAll) await onRefreshAll();
+    } catch (err) {
+      setError(err.message || 'Failed to reset deliveries.');
+    }
+  };
+
+  const handleSaveManageSales = async () => {
+    setError('');
+    setSuccess('');
+    try {
+      if (manageDateMode === 'single') {
+        await api.saveSalesData(manageDate, manageSales, manageSalesFileName || 'Manually Entered');
+        setSuccess(`Sales data saved successfully for ${manageDate}.`);
+      } else {
+        const dateList = [];
+        let curr = new Date(manageStartDate);
+        const end = new Date(manageEndDate);
+        while (curr <= end) {
+          dateList.push(curr.toISOString().split('T')[0]);
+          curr.setDate(curr.getDate() + 1);
+        }
+
+        const grouped = {};
+        dateList.forEach(d => {
+          grouped[d] = [];
+        });
+
+        manageSales.forEach(item => {
+          const itemDate = item.date || manageStartDate;
+          if (grouped[itemDate]) {
+            grouped[itemDate].push({
+              sku: item.sku,
+              name: item.name,
+              quantitySold: item.quantitySold,
+              price: item.price
+            });
+          }
+        });
+
+        for (const d of dateList) {
+          await api.saveSalesData(d, grouped[d], `Range Save ${manageStartDate}_${manageEndDate}`);
+        }
+        setSuccess(`Sales data saved successfully for range ${manageStartDate} to ${manageEndDate}.`);
+      }
+      if (onRefreshAll) await onRefreshAll();
+    } catch (err) {
+      setError(err.message || 'Failed to save sales data.');
+    }
+  };
+
+  const handleResetManageSales = async () => {
+    const target = manageDateMode === 'single' ? manageDate : `range ${manageStartDate} to ${manageEndDate}`;
+    if (!window.confirm(`Are you sure you want to reset all sales data to 0 for ${target}?`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      if (manageDateMode === 'single') {
+        await api.saveSalesData(manageDate, [], 'Reset');
+        setManageSales([]);
+        setManageSalesFileName('');
+      } else {
+        let curr = new Date(manageStartDate);
+        const end = new Date(manageEndDate);
+        while (curr <= end) {
+          const dStr = curr.toISOString().split('T')[0];
+          await api.saveSalesData(dStr, [], 'Reset');
+          curr.setDate(curr.getDate() + 1);
+        }
+        setManageSales([]);
+        setManageSalesFileName('');
+      }
+      setSuccess(`Sales data reset to 0 for ${target}.`);
+      if (onRefreshAll) await onRefreshAll();
+    } catch (err) {
+      setError(err.message || 'Failed to reset sales data.');
+    }
+  };
+
+  const handleAddManageDeliveryItem = () => {
+    if (!newDeliveryRawItemId) return;
+    const rItem = rawItems.find(r => r._id === newDeliveryRawItemId);
+    if (!rItem) return;
+
+    const targetDate = manageDateMode === 'single' ? manageDate : (newDeliveryDate || manageStartDate);
+
+    const newItem = {
+      rawItemId: newDeliveryRawItemId,
+      name: rItem.name,
+      quantity: Number(newDeliveryQuantity) || 0,
+      price: Number(newDeliveryPrice) || 0,
+      date: targetDate
+    };
+
+    setManageDeliveries(prev => [...prev, newItem]);
+    setNewDeliveryRawItemId('');
+    setNewDeliveryQuantity('');
+    setNewDeliveryPrice('');
+  };
+
+  const handleAddManageSalesItem = () => {
+    if (!newSalesSku) return;
+    const recipe = recipes.find(r => r.menuItemSku === newSalesSku);
+    if (!recipe) return;
+
+    const targetDate = manageDateMode === 'single' ? manageDate : (newSalesDate || manageStartDate);
+
+    const newItem = {
+      sku: newSalesSku,
+      name: recipe.menuItemName,
+      quantitySold: Number(newSalesQuantitySold) || 0,
+      price: Number(newSalesPrice) || 0,
+      date: targetDate
+    };
+
+    setManageSales(prev => [...prev, newItem]);
+    setNewSalesSku('');
+    setNewSalesQuantitySold('');
+    setNewSalesPrice('');
+  };
 
   // Handlers for boxes / loose counts input
   const handleBoxesChange = (itemId, val, qtyPerBox) => {
@@ -313,6 +739,34 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
         </div>
       </div>
 
+      {/* Main Tab Navigation */}
+      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('report')}
+          className={`btn ${activeMainTab === 'report' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+        >
+          <Clipboard size={15} /> Run Audit Report
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('deliveries')}
+          className={`btn ${activeMainTab === 'deliveries' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+        >
+          <Upload size={15} /> Manage Deliveries
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('sales')}
+          className={`btn ${activeMainTab === 'sales' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+        >
+          <FileText size={15} /> Manage Sales Data
+        </button>
+      </div>
+
       {error && (
         <div className="card" style={{ background: 'var(--danger-glow)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--danger)', fontSize: '0.9rem', padding: '1rem' }}>
           {error}
@@ -325,7 +779,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
         </div>
       )}
 
-      {generatedReport ? (
+      {activeMainTab === 'report' && (generatedReport ? (
         /* ================= RESULTS VIEW ================= */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
@@ -338,7 +792,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                 <X size={16} /> Close Report
               </button>
               <h2 className="page-title" style={{ fontSize: '1.5rem' }}>
-                Audit Period Results: {new Date(startDate).toLocaleDateString()} to {new Date(endDate).toLocaleDateString()}
+                Audit Period Results: {new Date(startDate).toLocaleDateString(undefined, { timeZone: 'UTC' })} to {new Date(endDate).toLocaleDateString(undefined, { timeZone: 'UTC' })}
               </h2>
             </div>
           </div>
@@ -406,8 +860,13 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                     function expectedFinalValueFromRaw(item) {
                       // Expectation: expectedFinal = start + delivery - sold
                       // Let's resolve deliveries
+                      if (!item || !item.rawItemId) return 0;
                       const idStr = (item.rawItemId._id || item.rawItemId).toString();
-                      const sessDelivery = generatedReport.deliveries?.find(d => d.rawItemId._id === idStr || d.rawItemId === idStr);
+                      const sessDelivery = generatedReport.deliveries?.find(d => {
+                        if (!d || !d.rawItemId) return false;
+                        const dId = d.rawItemId._id || d.rawItemId;
+                        return dId && dId.toString() === idStr;
+                      });
                       return sessDelivery ? sessDelivery.quantity : 0;
                     }
 
@@ -505,15 +964,26 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
               <div 
                 className="upload-dropzone" 
                 onClick={() => !parsingInvoice && document.getElementById('invoice-input').click()}
-                style={{ padding: '1.75rem 1rem', cursor: parsingInvoice ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '1.75rem 1rem', cursor: parsingInvoice ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
-                <Upload className="upload-icon" style={{ height: '32px', width: '32px', marginBottom: '0.25rem' }} />
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem' }}>
-                  {parsingInvoice ? 'AI extracting invoice...' : 'Upload Invoice PDF / Image'}
-                </h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>
-                  Parsed by Gemini for quantities and prices
-                </p>
+                {parsingInvoice ? (
+                  <>
+                    <div style={{ width: '28px', height: '28px', border: '3px solid rgba(249,115,22,0.1)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem', color: 'var(--primary)' }}>
+                      AI extracting invoice...
+                    </h4>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="upload-icon" style={{ height: '32px', width: '32px', marginBottom: '0.25rem' }} />
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem' }}>
+                      Upload Invoice PDF / Image
+                    </h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>
+                      Parsed by Gemini for quantities and prices
+                    </p>
+                  </>
+                )}
                 <input
                   id="invoice-input"
                   type="file"
@@ -526,7 +996,19 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
 
               {/* Delivery list summary */}
               <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Added Deliveries ({deliveries.length})</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Added Deliveries ({deliveries.length})</h4>
+                  {deliveries.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setIsEditDeliveriesModalOpen(true)}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                    >
+                      <Edit2 size={12} style={{ color: 'var(--primary)' }} /> Edit
+                    </button>
+                  )}
+                </div>
                 {deliveries.length === 0 ? (
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>No delivery items added yet.</p>
                 ) : (
@@ -558,15 +1040,26 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
               <div 
                 className="upload-dropzone" 
                 onClick={() => !parsingSales && document.getElementById('sales-input').click()}
-                style={{ padding: '1.75rem 1rem', cursor: parsingSales ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '1.75rem 1rem', cursor: parsingSales ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
-                <Upload className="upload-icon" style={{ height: '32px', width: '32px', marginBottom: '0.25rem' }} />
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem' }}>
-                  {parsingSales ? 'AI parsing sales...' : 'Upload Sales Report / POS file'}
-                </h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>
-                  Supports sales CSV, PDF, and image sales reports
-                </p>
+                {parsingSales ? (
+                  <>
+                    <div style={{ width: '28px', height: '28px', border: '3px solid rgba(249,115,22,0.1)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem', color: 'var(--primary)' }}>
+                      AI parsing sales...
+                    </h4>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="upload-icon" style={{ height: '32px', width: '32px', marginBottom: '0.25rem' }} />
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.15rem' }}>
+                      Upload Sales Report / POS file
+                    </h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0 }}>
+                      Supports sales CSV, PDF, and image sales reports
+                    </p>
+                  </>
+                )}
                 <input
                   id="sales-input"
                   type="file"
@@ -578,14 +1071,26 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Loaded Sales Entries ({salesData.length})</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Loaded Sales Entries ({salesData.length})</h4>
+                  {salesData.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setIsEditSalesModalOpen(true)}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                    >
+                      <Edit2 size={12} style={{ color: 'var(--primary)' }} /> Edit
+                    </button>
+                  )}
+                </div>
                 {salesData.length === 0 ? (
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>No sales reports loaded.</p>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContext: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--success)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <Check size={14} />
-                      <span style={{ fontWeight: 600 }}>{salesFileName}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, overflow: 'hidden' }}>
+                      <Check size={14} style={{ flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{salesFileName}</span>
                     </div>
                     <button
                       type="button"
@@ -599,37 +1104,6 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
               </div>
             </div>
 
-            {/* Calendar Highlights & Quick Setup */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <InventoryCalendar 
-                sessions={sessions}
-                onSelectDate={handleCalendarDateSelect}
-              />
-              
-              <div className="card" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', alignItems: 'center', fontSize: '0.8rem', padding: '0.75rem', background: 'rgba(18, 20, 26, 0.4)', border: 'var(--glass-border)', margin: 0 }}>
-                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Click date to set:</span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', color: calendarClickTarget === 'start' ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: calendarClickTarget === 'start' ? 700 : 500 }}>
-                  <input
-                    type="radio"
-                    name="calendarClickTarget"
-                    checked={calendarClickTarget === 'start'}
-                    onChange={() => setCalendarClickTarget('start')}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  Start Date
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', color: calendarClickTarget === 'end' ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: calendarClickTarget === 'end' ? 700 : 500 }}>
-                  <input
-                    type="radio"
-                    name="calendarClickTarget"
-                    checked={calendarClickTarget === 'end'}
-                    onChange={() => setCalendarClickTarget('end')}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  End Date
-                </label>
-              </div>
-            </div>
 
           </div>
 
@@ -638,6 +1112,14 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Clipboard size={18} style={{ color: 'var(--primary)' }} /> 4. Enter Current Counts on {endDate}
             </h3>
+
+            {loadingEndingCounts ? (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Searching database ending records...</div>
+            ) : endingCountsMessage ? (
+              <div style={{ fontSize: '0.8rem', padding: '0.6rem 0.8rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '1rem' }}>
+                {endingCountsMessage}
+              </div>
+            ) : null}
 
             <div className="table-container" style={{ maxHeight: '450px', overflowY: 'auto' }}>
               <table className="custom-table responsive-table">
@@ -722,6 +1204,658 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
             </button>
           </div>
 
+        </div>
+      ))}
+
+      {/* ================= MANAGE DELIVERIES VIEW ================= */}
+      {activeMainTab === 'deliveries' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '210px 1fr', gap: '1rem', alignItems: 'start' }}>
+          {/* Left Column: Calendar Selection */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '210px' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Calendar size={15} style={{ color: 'var(--primary)' }} /> Select Date
+            </h3>
+
+            {/* Toggle between Single and Range */}
+            <div style={{ display: 'flex', gap: '0.2rem', background: 'rgba(0,0,0,0.2)', padding: '0.15rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <button
+                type="button"
+                className={`btn ${manageDateMode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => handleToggleDateMode('single')}
+                style={{ flex: 1, padding: '0.2rem 0.4rem', fontSize: '0.7rem', height: '26px' }}
+              >
+                Single Date
+              </button>
+              <button
+                type="button"
+                className={`btn ${manageDateMode === 'range' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => handleToggleDateMode('range')}
+                style={{ flex: 1, padding: '0.2rem 0.4rem', fontSize: '0.7rem', height: '26px' }}
+              >
+                Date Range
+              </button>
+            </div>
+            
+            {manageDateMode === 'single' ? (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px' }}>Date Context</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={manageDate}
+                  onChange={(e) => setManageDate(e.target.value)}
+                  style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px', color: manageRangeClickTarget === 'start' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                    Start Date {manageRangeClickTarget === 'start' && '👉'}
+                  </label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={manageStartDate}
+                    onChange={(e) => setManageStartDate(e.target.value)}
+                    style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px', color: manageRangeClickTarget === 'end' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                    End Date {manageRangeClickTarget === 'end' && '👉'}
+                  </label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={manageEndDate}
+                    onChange={(e) => setManageEndDate(e.target.value)}
+                    style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <InventoryCalendar 
+              sessions={sessions}
+              onSelectDate={handleManageCalendarDateSelect}
+              selectedDate={manageDateMode === 'single' ? manageDate : null}
+              selectedStartDate={manageDateMode === 'range' ? manageStartDate : null}
+              selectedEndDate={manageDateMode === 'range' ? manageEndDate : null}
+              compact={true}
+            />
+          </div>
+
+          {/* Right Column: Manage Deliveries List */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>
+                  {manageDateMode === 'single' ? `Manage Deliveries for ${manageDate}` : `Manage Deliveries from ${manageStartDate} to ${manageEndDate}`}
+                </h3>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  Add, edit, or wipe delivery records for this selection
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleResetManageDeliveries}
+                style={{ borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--danger)', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+              >
+                Reset to 0
+              </button>
+            </div>
+
+            {loadingManageData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '3rem 1rem', gap: '1rem' }}>
+                <div style={{ width: '28px', height: '28px', border: '3px solid rgba(249,115,22,0.1)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Loading deliveries from database...</p>
+              </div>
+            ) : (
+              <>
+                {/* Search / Filter */}
+                <div style={{ position: 'relative' }}>
+                  <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search delivery item description..."
+                    className="input-field"
+                    value={searchManageDeliveries}
+                    onChange={(e) => setSearchManageDeliveries(e.target.value)}
+                    style={{ paddingLeft: '34px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                {/* Table list */}
+                <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th>Mapped Database Ingredient</th>
+                        {manageDateMode === 'range' && <th style={{ width: '105px' }}>Date</th>}
+                        <th style={{ width: '95px', textAlign: 'right' }}>Qty</th>
+                        <th style={{ width: '95px', textAlign: 'right' }}>Price ($)</th>
+                        <th style={{ width: '50px', textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Manually Add Entry Row */}
+                      <tr style={{ background: 'rgba(249,115,22,0.02)', borderBottom: '2px dashed rgba(255,255,255,0.06)' }}>
+                        <td data-label="Description">
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(New Item)</span>
+                        </td>
+                        <td data-label="Mapped Ingredient">
+                          <select
+                            value={newDeliveryRawItemId}
+                            onChange={(e) => setNewDeliveryRawItemId(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                          >
+                            <option value="">-- Mapped Ingredient --</option>
+                            {rawItems.map(raw => (
+                              <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
+                            ))}
+                          </select>
+                        </td>
+                        {manageDateMode === 'range' && (
+                          <td data-label="Date">
+                            <select
+                              value={newDeliveryDate || manageStartDate}
+                              onChange={(e) => setNewDeliveryDate(e.target.value)}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                            >
+                              {getDatesInRange(manageStartDate, manageEndDate).map(d => (
+                                <option key={d} value={d}>{d}</option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
+                        <td data-label="Qty">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Qty"
+                            value={newDeliveryQuantity}
+                            onChange={(e) => setNewDeliveryQuantity(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                          />
+                        </td>
+                        <td data-label="Price ($)">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="Price"
+                            value={newDeliveryPrice}
+                            onChange={(e) => setNewDeliveryPrice(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                          />
+                        </td>
+                        <td data-label="Action" style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={handleAddManageDeliveryItem}
+                            disabled={!newDeliveryRawItemId}
+                            className="btn btn-primary"
+                            style={{ padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', height: '30px' }}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Entered list */}
+                      {manageDeliveries.filter(item => {
+                        return item.name.toLowerCase().includes(searchManageDeliveries.toLowerCase());
+                      }).length === 0 ? (
+                        <tr>
+                          <td colSpan={manageDateMode === 'range' ? 6 : 5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            No deliveries found for this selection. Upload invoices or add items above.
+                          </td>
+                        </tr>
+                      ) : (
+                        manageDeliveries.map((item, idx) => {
+                          if (!item.name.toLowerCase().includes(searchManageDeliveries.toLowerCase())) return null;
+                          return (
+                            <tr key={item.id || idx}>
+                              <td data-label="Description" style={{ fontWeight: 600 }}>
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    const updated = [...manageDeliveries];
+                                    updated[idx].name = e.target.value;
+                                    setManageDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              <td data-label="Mapped Ingredient">
+                                <select
+                                  value={item.rawItemId || ''}
+                                  onChange={(e) => {
+                                    const updated = [...manageDeliveries];
+                                    updated[idx].rawItemId = e.target.value;
+                                    updated[idx].name = rawItems.find(r => r._id === e.target.value)?.name || updated[idx].name;
+                                    setManageDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                                >
+                                  <option value="">-- Select Ingredient --</option>
+                                  {rawItems.map(raw => (
+                                    <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
+                                  ))}
+                                </select>
+                              </td>
+                              {manageDateMode === 'range' && (
+                                <td data-label="Date">
+                                  <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem' }}>
+                                    {item.date}
+                                  </span>
+                                </td>
+                              )}
+                              <td data-label="Qty">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const updated = [...manageDeliveries];
+                                    updated[idx].quantity = Number(e.target.value) || 0;
+                                    setManageDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              <td data-label="Price ($)">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.price}
+                                  onChange={(e) => {
+                                    const updated = [...manageDeliveries];
+                                    updated[idx].price = Number(e.target.value) || 0;
+                                    setManageDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              <td data-label="Action" style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setManageDeliveries(prev => prev.filter((_, i) => i !== idx))}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '0.25rem' }}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Save button */}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSaveManageDeliveries}
+                  style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}
+                >
+                  Save Deliveries changes
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= MANAGE SALES VIEW ================= */}
+      {activeMainTab === 'sales' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '210px 1fr', gap: '1rem', alignItems: 'start' }}>
+          {/* Left Column: Calendar Selection */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '210px' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Calendar size={15} style={{ color: 'var(--primary)' }} /> Select Date
+            </h3>
+
+            {/* Toggle between Single and Range */}
+            <div style={{ display: 'flex', gap: '0.2rem', background: 'rgba(0,0,0,0.2)', padding: '0.15rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <button
+                type="button"
+                className={`btn ${manageDateMode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => handleToggleDateMode('single')}
+                style={{ flex: 1, padding: '0.2rem 0.4rem', fontSize: '0.7rem', height: '26px' }}
+              >
+                Single Date
+              </button>
+              <button
+                type="button"
+                className={`btn ${manageDateMode === 'range' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => handleToggleDateMode('range')}
+                style={{ flex: 1, padding: '0.2rem 0.4rem', fontSize: '0.7rem', height: '26px' }}
+              >
+                Date Range
+              </button>
+            </div>
+            
+            {manageDateMode === 'single' ? (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px' }}>Date Context</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={manageDate}
+                  onChange={(e) => setManageDate(e.target.value)}
+                  style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px', color: manageRangeClickTarget === 'start' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                    Start Date {manageRangeClickTarget === 'start' && '👉'}
+                  </label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={manageStartDate}
+                    onChange={(e) => setManageStartDate(e.target.value)}
+                    style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.7rem', marginBottom: '2px', color: manageRangeClickTarget === 'end' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                    End Date {manageRangeClickTarget === 'end' && '👉'}
+                  </label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={manageEndDate}
+                    onChange={(e) => setManageEndDate(e.target.value)}
+                    style={{ fontSize: '0.75rem', height: '28px', padding: '0.25rem' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <InventoryCalendar 
+              sessions={sessions}
+              onSelectDate={handleManageCalendarDateSelect}
+              selectedDate={manageDateMode === 'single' ? manageDate : null}
+              selectedStartDate={manageDateMode === 'range' ? manageStartDate : null}
+              selectedEndDate={manageDateMode === 'range' ? manageEndDate : null}
+              compact={true}
+            />
+          </div>
+
+          {/* Right Column: Manage Sales List */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>
+                  {manageDateMode === 'single' ? `Manage Sales Data for ${manageDate}` : `Manage Sales Data from ${manageStartDate} to ${manageEndDate}`}
+                </h3>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  Add, edit, or wipe recipe sales figures for this selection
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleResetManageSales}
+                style={{ borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--danger)', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+              >
+                Reset to 0
+              </button>
+            </div>
+
+            {loadingManageData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '3rem 1rem', gap: '1rem' }}>
+                <div style={{ width: '28px', height: '28px', border: '3px solid rgba(249,115,22,0.1)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Loading sales data from database...</p>
+              </div>
+            ) : (
+              <>
+                {/* Sales POS source file name */}
+                {manageDateMode === 'single' && (
+                  <div className="form-group" style={{ marginBottom: '0.25rem' }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Sales Source File / POS Label</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="e.g. SalesReport_Jun20.csv"
+                      value={manageSalesFileName}
+                      onChange={(e) => setManageSalesFileName(e.target.value)}
+                      style={{ height: '36px', fontSize: '0.85rem' }}
+                    />
+                  </div>
+                )}
+
+                {/* Search / Filter */}
+                <div style={{ position: 'relative' }}>
+                  <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search by SKU or menu item name..."
+                    className="input-field"
+                    value={searchManageSales}
+                    onChange={(e) => setSearchManageSales(e.target.value)}
+                    style={{ paddingLeft: '34px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                {/* Table list */}
+                <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '130px' }}>SKU / Code</th>
+                        <th>Menu Product Name</th>
+                        {manageDateMode === 'range' && <th style={{ width: '105px' }}>Date</th>}
+                        <th style={{ width: '95px', textAlign: 'right' }}>Qty Sold</th>
+                        <th style={{ width: '95px', textAlign: 'right' }}>Price ($)</th>
+                        <th style={{ width: '50px', textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Manually Add Entry Row */}
+                      <tr style={{ background: 'rgba(249,115,22,0.02)', borderBottom: '2px dashed rgba(255,255,255,0.06)' }}>
+                        <td data-label="SKU">
+                          <select
+                            value={newSalesSku}
+                            onChange={(e) => setNewSalesSku(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                          >
+                            <option value="">-- Select SKU --</option>
+                            {recipes.map(rec => (
+                              <option key={rec._id} value={rec.menuItemSku}>{rec.menuItemSku}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td data-label="Menu Product Name">
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {recipes.find(r => r.menuItemSku === newSalesSku)?.menuItemName || '(Product Auto Name)'}
+                          </span>
+                        </td>
+                        {manageDateMode === 'range' && (
+                          <td data-label="Date">
+                            <select
+                              value={newSalesDate || manageStartDate}
+                              onChange={(e) => setNewSalesDate(e.target.value)}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                            >
+                              {getDatesInRange(manageStartDate, manageEndDate).map(d => (
+                                <option key={d} value={d}>{d}</option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
+                        <td data-label="Qty Sold">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Qty"
+                            value={newSalesQuantitySold}
+                            onChange={(e) => setNewSalesQuantitySold(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                          />
+                        </td>
+                        <td data-label="Price ($)">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="Price"
+                            value={newSalesPrice}
+                            onChange={(e) => setNewSalesPrice(e.target.value)}
+                            className="input-field"
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                          />
+                        </td>
+                        <td data-label="Action" style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={handleAddManageSalesItem}
+                            disabled={!newSalesSku}
+                            className="btn btn-primary"
+                            style={{ padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', height: '30px' }}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Entries list */}
+                      {manageSales.filter(item => {
+                        const search = searchManageSales.toLowerCase();
+                        return item.sku.toLowerCase().includes(search) || item.name.toLowerCase().includes(search);
+                      }).length === 0 ? (
+                        <tr>
+                          <td colSpan={manageDateMode === 'range' ? 6 : 5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            No sales records found for this selection. Upload POS reports or add entries above.
+                          </td>
+                        </tr>
+                      ) : (
+                        manageSales.map((item, idx) => {
+                          const search = searchManageSales.toLowerCase();
+                          if (!item.sku.toLowerCase().includes(search) && !item.name.toLowerCase().includes(search)) return null;
+                          return (
+                            <tr key={item.id || idx}>
+                              <td data-label="SKU">
+                                <select
+                                  value={item.sku || ''}
+                                  onChange={(e) => {
+                                    const updated = [...manageSales];
+                                    updated[idx].sku = e.target.value;
+                                    const match = recipes.find(r => r.menuItemSku === e.target.value);
+                                    if (match) {
+                                      updated[idx].name = match.menuItemName;
+                                    }
+                                    setManageSales(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                                >
+                                  <option value="">-- No SKU --</option>
+                                  {recipes.map(rec => (
+                                    <option key={rec._id} value={rec.menuItemSku}>{rec.menuItemSku}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td data-label="Menu Product Name" style={{ fontWeight: 600 }}>
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    const updated = [...manageSales];
+                                    updated[idx].name = e.target.value;
+                                    setManageSales(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              {manageDateMode === 'range' && (
+                                <td data-label="Date">
+                                  <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem' }}>
+                                    {item.date}
+                                  </span>
+                                </td>
+                              )}
+                              <td data-label="Qty Sold">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.quantitySold}
+                                  onChange={(e) => {
+                                    const updated = [...manageSales];
+                                    updated[idx].quantitySold = Number(e.target.value) || 0;
+                                    setManageSales(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              <td data-label="Price ($)">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.price}
+                                  onChange={(e) => {
+                                    const updated = [...manageSales];
+                                    updated[idx].price = Number(e.target.value) || 0;
+                                    setManageSales(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                              </td>
+                              <td data-label="Action" style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setManageSales(prev => prev.filter((_, i) => i !== idx))}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '0.25rem' }}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Save button */}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSaveManageSales}
+                  style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}
+                >
+                  Save Sales changes
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -918,9 +2052,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
         }).sort((a, b) => new Date(a.date) - new Date(b.date));
 
         const getSessionItemCount = (sess, itemId) => {
-          const inventoryToUse = sess.actualFinalInventory && sess.actualFinalInventory.length > 0
-            ? sess.actualFinalInventory
-            : sess.initialInventory;
+          const hasFinal = sess.actualFinalInventory && sess.actualFinalInventory.some(i => i.quantity > 0);
+          const inventoryToUse = hasFinal ? sess.actualFinalInventory : sess.initialInventory;
           const match = inventoryToUse.find(i => {
             const rawId = i.rawItemId?._id || i.rawItemId;
             return rawId?.toString() === itemId.toString();
@@ -974,7 +2107,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                           <th>Ingredient</th>
                           <th>Unit</th>
                           {sessionsWithCounts.map((sess, sIdx) => {
-                            const formattedDate = new Date(sess.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                            const formattedDate = new Date(sess.date).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' });
                             return <th key={sess._id || sIdx} style={{ textAlign: 'right' }}>{formattedDate}</th>;
                           })}
                           <th style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>Total Deliveries Sum</th>
@@ -999,7 +2132,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               {sessionsWithCounts.map((sess, sIdx) => {
                                 const qty = getSessionItemCount(sess, item._id);
                                 return (
-                                  <td key={sess._id || sIdx} data-label={new Date(sess.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} style={{ textAlign: 'right', color: qty > 0 ? '#fff' : 'var(--text-muted)' }}>
+                                  <td key={sess._id || sIdx} data-label={new Date(sess.date).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })} style={{ textAlign: 'right', color: qty > 0 ? '#fff' : 'var(--text-muted)' }}>
                                     {qty.toFixed(1)}
                                   </td>
                                 );
@@ -1026,6 +2159,334 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
           </div>
         );
       })()}
+      {/* ================= EDIT DELIVERIES POPUP MODAL ================= */}
+      {isEditDeliveriesModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '750px', width: '90%', position: 'relative', background: 'rgba(18, 20, 26, 0.95)', backdropFilter: 'blur(20px)', border: 'var(--glass-border)' }}>
+            <button 
+              onClick={() => {
+                setIsEditDeliveriesModalOpen(false);
+                setEditDeliveriesSearch('');
+                setEditDeliveriesSelectedId('');
+              }} 
+              style={{ position: 'absolute', right: '1.25rem', top: '1.25rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={20} />
+            </button>
+            
+            <h2 className="form-label" style={{ fontSize: '1.25rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Edit2 size={20} style={{ color: 'var(--primary)' }} /> Edit Added Deliveries
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Modify mapped ingredients, quantities, and unit prices for the current audit session.
+            </p>
+
+            {/* Filters Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ position: 'relative' }}>
+                <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={16} />
+                <input
+                  type="text"
+                  placeholder="Search by description..."
+                  className="input-field"
+                  value={editDeliveriesSearch}
+                  onChange={(e) => setEditDeliveriesSearch(e.target.value)}
+                  style={{ paddingLeft: '34px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <select
+                className="input-field"
+                value={editDeliveriesSelectedId}
+                onChange={(e) => setEditDeliveriesSelectedId(e.target.value)}
+                style={{ height: '36px', fontSize: '0.85rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+              >
+                <option value="">-- All Ingredients --</option>
+                {rawItems.map(item => (
+                  <option key={item._id} value={item._id}>{item.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Table Container */}
+            <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '1.5rem' }}>
+              {deliveries.filter(item => {
+                const matchesSearch = item.name.toLowerCase().includes(editDeliveriesSearch.toLowerCase());
+                const matchesId = !editDeliveriesSelectedId || item.rawItemId === editDeliveriesSelectedId;
+                return matchesSearch && matchesId;
+              }).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  No deliveries match the selected filters.
+                </div>
+              ) : (
+                <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Description</th>
+                      <th>Mapped Database Ingredient</th>
+                      <th style={{ width: '100px', textAlign: 'right' }}>Qty</th>
+                      <th style={{ width: '100px', textAlign: 'right' }}>Price ($)</th>
+                      <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deliveries.map((item, idx) => {
+                      const matchesSearch = item.name.toLowerCase().includes(editDeliveriesSearch.toLowerCase());
+                      const matchesId = !editDeliveriesSelectedId || item.rawItemId === editDeliveriesSelectedId;
+                      if (!matchesSearch || !matchesId) return null;
+
+                      return (
+                        <tr key={idx}>
+                          <td data-label="Description" style={{ fontWeight: 600 }}>
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                const updated = [...deliveries];
+                                updated[idx].name = e.target.value;
+                                setDeliveries(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Mapped Ingredient">
+                            <select
+                              value={item.rawItemId || ''}
+                              onChange={(e) => {
+                                const updated = [...deliveries];
+                                updated[idx].rawItemId = e.target.value;
+                                updated[idx].name = rawItems.find(r => r._id === e.target.value)?.name || updated[idx].name;
+                                setDeliveries(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                            >
+                              <option value="">-- Select Ingredient --</option>
+                              {rawItems.map(raw => (
+                                <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td data-label="Qty">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const updated = [...deliveries];
+                                updated[idx].quantity = Number(e.target.value) || 0;
+                                setDeliveries(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Price ($)">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={item.price}
+                              onChange={(e) => {
+                                const updated = [...deliveries];
+                                updated[idx].price = Number(e.target.value) || 0;
+                                setDeliveries(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Action" style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => setDeliveries(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '0.25rem' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button"
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setIsEditDeliveriesModalOpen(false);
+                  setEditDeliveriesSearch('');
+                  setEditDeliveriesSelectedId('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= EDIT SALES POPUP MODAL ================= */}
+      {isEditSalesModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '750px', width: '90%', position: 'relative', background: 'rgba(18, 20, 26, 0.95)', backdropFilter: 'blur(20px)', border: 'var(--glass-border)' }}>
+            <button 
+              onClick={() => {
+                setIsEditSalesModalOpen(false);
+                setEditSalesSearch('');
+              }} 
+              style={{ position: 'absolute', right: '1.25rem', top: '1.25rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={20} />
+            </button>
+            
+            <h2 className="form-label" style={{ fontSize: '1.25rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Edit2 size={20} style={{ color: 'var(--primary)' }} /> Edit Loaded Sales Entries
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Modify recipe SKUs, menu item names, and quantities sold for the POS audit.
+            </p>
+
+            {/* Filter Search */}
+            <div style={{ position: 'relative', marginBottom: '1.25rem' }}>
+              <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={16} />
+              <input
+                type="text"
+                placeholder="Search by SKU or menu item name..."
+                className="input-field"
+                value={editSalesSearch}
+                onChange={(e) => setEditSalesSearch(e.target.value)}
+                style={{ paddingLeft: '34px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            {/* Table Container */}
+            <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '1.5rem' }}>
+              {salesData.filter(item => {
+                const search = editSalesSearch.toLowerCase();
+                return item.sku.toLowerCase().includes(search) || item.name.toLowerCase().includes(search);
+              }).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  No sales entries match the selected filters.
+                </div>
+              ) : (
+                <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>SKU / Code</th>
+                      <th>Menu Product Name</th>
+                      <th style={{ width: '100px', textAlign: 'right' }}>Qty Sold</th>
+                      <th style={{ width: '100px', textAlign: 'right' }}>Price ($)</th>
+                      <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesData.map((item, idx) => {
+                      const search = editSalesSearch.toLowerCase();
+                      if (!item.sku.toLowerCase().includes(search) && !item.name.toLowerCase().includes(search)) return null;
+
+                      return (
+                        <tr key={idx}>
+                          <td data-label="SKU">
+                            <select
+                              value={item.sku || ''}
+                              onChange={(e) => {
+                                const updated = [...salesData];
+                                updated[idx].sku = e.target.value;
+                                const match = recipes.find(r => r.menuItemSku === e.target.value);
+                                if (match) {
+                                  updated[idx].name = match.menuItemName;
+                                }
+                                setSalesData(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                            >
+                              <option value="">-- No SKU --</option>
+                              {recipes.map(rec => (
+                                <option key={rec._id} value={rec.menuItemSku}>{rec.menuItemSku}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td data-label="Menu Product Name" style={{ fontWeight: 600 }}>
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                const updated = [...salesData];
+                                updated[idx].name = e.target.value;
+                                setSalesData(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Qty Sold">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.quantitySold}
+                              onChange={(e) => {
+                                const updated = [...salesData];
+                                updated[idx].quantitySold = Number(e.target.value) || 0;
+                                setSalesData(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Price ($)">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={item.price}
+                              onChange={(e) => {
+                                const updated = [...salesData];
+                                updated[idx].price = Number(e.target.value) || 0;
+                                setSalesData(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                            />
+                          </td>
+                          <td data-label="Action" style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => setSalesData(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '0.25rem' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button"
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setIsEditSalesModalOpen(false);
+                  setEditSalesSearch('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

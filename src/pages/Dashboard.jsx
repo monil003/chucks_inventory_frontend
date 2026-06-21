@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
 import { 
   BarChart3, Package, BookOpen, AlertTriangle, CheckCircle, Calendar, 
-  Trash2, Eye, ArrowLeft, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Clipboard, Upload, CheckCircle2, XCircle, Clock
+  Trash2, Eye, ArrowLeft, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Clipboard, Upload, CheckCircle2, XCircle, Clock, X
 } from 'lucide-react';
 import InventoryCalendar from '../components/InventoryCalendar';
 
@@ -15,6 +15,11 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
   const [detailsSearchQuery, setDetailsSearchQuery] = useState('');
   const [detailsCurrentPage, setDetailsCurrentPage] = useState(1);
   const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'variance', 'loss', 'overage', 'ontarget'
+  const [popupSession, setPopupSession] = useState(null);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [popupSearchQuery, setPopupSearchQuery] = useState('');
+  const [popupFilterMode, setPopupFilterMode] = useState('all'); // 'all', 'counts', 'deliveries'
+  const [popupSelectedIngredientId, setPopupSelectedIngredientId] = useState('');
   const itemsPerPage = 25;
 
   // Find session for selected Date
@@ -68,7 +73,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
     const list = [...completedSessions].slice(0, 10).reverse();
     return list.map(session => {
       const dataPoint = {
-        date: new Date(session.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        date: new Date(session.date).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })
       };
       session.variance.forEach(v => {
         if (v.rawItemId) {
@@ -78,6 +83,78 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
       return dataPoint;
     });
   }, [completedSessions]);
+
+  const filteredPopupItems = useMemo(() => {
+    if (!popupSession) return [];
+
+    return rawItems.map(item => {
+      const initMatch = popupSession.initialInventory?.find(i => {
+        const id = i.rawItemId?._id || i.rawItemId;
+        return id?.toString() === item._id.toString();
+      });
+      const initialQty = initMatch ? initMatch.quantity : 0;
+
+      const finalMatch = popupSession.actualFinalInventory?.find(i => {
+        const id = i.rawItemId?._id || i.rawItemId;
+        return id?.toString() === item._id.toString();
+      });
+      const finalQty = finalMatch ? finalMatch.quantity : 0;
+
+      const delMatch = popupSession.deliveries?.find(d => {
+        const id = d.rawItemId?._id || d.rawItemId;
+        return id?.toString() === item._id.toString();
+      });
+      const deliveryQty = delMatch ? delMatch.quantity : 0;
+
+      return {
+        ...item,
+        initialQty,
+        finalQty,
+        deliveryQty,
+        hasCounts: initialQty > 0 || finalQty > 0,
+        hasDeliveries: deliveryQty > 0
+      };
+    }).filter(item => {
+      const matchesSearch = item.name.toLowerCase().includes(popupSearchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (popupSelectedIngredientId && item._id.toString() !== popupSelectedIngredientId.toString()) {
+        return false;
+      }
+
+      if (popupFilterMode === 'counts') {
+        return item.hasCounts;
+      }
+      if (popupFilterMode === 'deliveries') {
+        return item.hasDeliveries;
+      }
+
+      return true;
+    });
+  }, [popupSession, rawItems, popupSearchQuery, popupFilterMode, popupSelectedIngredientId]);
+
+  const handleCalendarDateSelect = (dateStr) => {
+    setSelectedDate(dateStr);
+    
+    const target = new Date(dateStr);
+    target.setUTCHours(0,0,0,0);
+    const session = sessions.find(s => {
+      const d = new Date(s.date);
+      d.setUTCHours(0,0,0,0);
+      return d.getTime() === target.getTime();
+    });
+
+    if (session) {
+      const hasCounts = (session.actualFinalInventory && session.actualFinalInventory.some(i => i.quantity > 0)) ||
+                        (session.initialInventory && session.initialInventory.some(i => i.quantity > 0));
+      const hasDeliveries = session.deliveries && session.deliveries.some(d => d.quantity > 0);
+
+      if (hasCounts || hasDeliveries) {
+        setPopupSession(session);
+        setIsPopupOpen(true);
+      }
+    }
+  };
 
   // Verification helper flags for selected date
   const isStartCountDone = useMemo(() => {
@@ -178,6 +255,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
             </button>
             <h1 className="page-title">
               Audit Results - {new Date(activeAuditSession.date).toLocaleDateString(undefined, { 
+                timeZone: 'UTC',
                 year: 'numeric', 
                 month: 'long', 
                 day: 'numeric' 
@@ -517,7 +595,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
         <div style={{ margin: 0 }}>
           <InventoryCalendar 
             sessions={sessions} 
-            onSelectDate={(dateStr) => setSelectedDate(dateStr)} 
+            onSelectDate={handleCalendarDateSelect} 
           />
         </div>
       </div>
@@ -662,6 +740,7 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
                     <tr key={session._id}>
                       <td data-label="Audit Date" style={{ fontWeight: 600 }}>
                         {new Date(session.date).toLocaleDateString(undefined, { 
+                          timeZone: 'UTC',
                           weekday: 'short', 
                           year: 'numeric', 
                           month: 'short', 
@@ -720,6 +799,152 @@ export default function Dashboard({ sessions, rawItems, recipes, onDeleteSession
           <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No completed audit session logs available.</p>
         )}
       </div>
+
+      {/* ================= CALENDAR DAY DETAIL POPUP MODAL ================= */}
+      {isPopupOpen && popupSession && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '750px', width: '90%', position: 'relative', background: 'rgba(18, 20, 26, 0.95)', backdropFilter: 'blur(20px)', border: 'var(--glass-border)' }}>
+            <button 
+              onClick={() => {
+                setIsPopupOpen(false);
+                setPopupSession(null);
+                setPopupSearchQuery('');
+                setPopupFilterMode('all');
+                setPopupSelectedIngredientId('');
+              }} 
+              style={{ position: 'absolute', right: '1.25rem', top: '1.25rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={20} />
+            </button>
+            
+            <h2 className="form-label" style={{ fontSize: '1.25rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clipboard size={20} style={{ color: 'var(--primary)' }} /> Inventory Log for {new Date(popupSession.date).toLocaleDateString(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              Review the recorded counts and delivery invoices entered for this day.
+            </p>
+
+            {/* Filter and Search Controls Row */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.25rem' }}>
+              
+              {/* Tabs for Filter Mode */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`btn ${popupFilterMode === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem' }}
+                  onClick={() => setPopupFilterMode('all')}
+                >
+                  All Items ({rawItems.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${popupFilterMode === 'counts' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', borderColor: popupFilterMode === 'counts' ? '' : 'rgba(16, 185, 129, 0.15)', color: popupFilterMode === 'counts' ? '' : 'var(--success)' }}
+                  onClick={() => setPopupFilterMode('counts')}
+                >
+                  Entered Counts Only
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${popupFilterMode === 'deliveries' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', borderColor: popupFilterMode === 'deliveries' ? '' : 'rgba(59, 130, 246, 0.15)', color: popupFilterMode === 'deliveries' ? '' : '#3b82f6' }}
+                  onClick={() => setPopupFilterMode('deliveries')}
+                >
+                  Deliveries Only
+                </button>
+              </div>
+
+              {/* Search & Dropdown Filter inputs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search by ingredient name..."
+                    className="input-field"
+                    value={popupSearchQuery}
+                    onChange={(e) => setPopupSearchQuery(e.target.value)}
+                    style={{ paddingLeft: '34px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <select
+                  className="input-field"
+                  value={popupSelectedIngredientId}
+                  onChange={(e) => setPopupSelectedIngredientId(e.target.value)}
+                  style={{ height: '36px', fontSize: '0.85rem', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                >
+                  <option value="">-- Select Specific Item --</option>
+                  {rawItems.map(item => (
+                    <option key={item._id} value={item._id}>{item.name}</option>
+                  ))}
+                </select>
+              </div>
+
+            </div>
+
+            {/* Table Container */}
+            <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '1.5rem' }}>
+              {filteredPopupItems.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  No items match the selected search or filters.
+                </div>
+              ) : (
+                <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Ingredient</th>
+                      <th>Unit</th>
+                      <th style={{ textAlign: 'right' }}>Day Start Count</th>
+                      <th style={{ textAlign: 'right' }}>Day End Count</th>
+                      <th style={{ textAlign: 'right' }}>Deliveries Logged</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPopupItems.map(item => (
+                      <tr key={item._id}>
+                        <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
+                        <td data-label="Unit">
+                          <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            {item.unit}
+                          </span>
+                        </td>
+                        <td data-label="Day Start Count" style={{ textAlign: 'right', color: item.initialQty > 0 ? '#fff' : 'var(--text-muted)' }}>
+                          {item.initialQty > 0 ? item.initialQty.toFixed(1) : '-'}
+                        </td>
+                        <td data-label="Day End Count" style={{ textAlign: 'right', color: item.finalQty > 0 ? '#fff' : 'var(--text-muted)' }}>
+                          {item.finalQty > 0 ? item.finalQty.toFixed(1) : '-'}
+                        </td>
+                        <td data-label="Deliveries Logged" style={{ textAlign: 'right', color: item.deliveryQty > 0 ? 'var(--success)' : 'var(--text-muted)', fontWeight: item.deliveryQty > 0 ? 600 : 500 }}>
+                          {item.deliveryQty > 0 ? `+${item.deliveryQty.toFixed(1)}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ minWidth: '100px' }} 
+                onClick={() => {
+                  setIsPopupOpen(false);
+                  setPopupSession(null);
+                  setPopupSearchQuery('');
+                  setPopupFilterMode('all');
+                  setPopupSelectedIngredientId('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
