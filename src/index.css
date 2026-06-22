@@ -361,7 +361,10 @@ body {
 }
 
 .custom-table th {
-  background: rgba(255, 255, 255, 0.02);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #11131a; /* Solid background to prevent rows from showing underneath */
   padding: 1rem 1.25rem;
   font-weight: 600;
   font-size: 0.85rem;
