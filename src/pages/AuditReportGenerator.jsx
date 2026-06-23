@@ -96,6 +96,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   const [newDeliveryQuantity, setNewDeliveryQuantity] = useState('');
   const [newDeliveryPrice, setNewDeliveryPrice] = useState('');
   const [newDeliveryDate, setNewDeliveryDate] = useState('');
+  const [newDeliveryBoxes, setNewDeliveryBoxes] = useState('');
+  const [newDeliveryPieces, setNewDeliveryPieces] = useState('');
 
   const [newSalesSku, setNewSalesSku] = useState('');
   const [newSalesQuantitySold, setNewSalesQuantitySold] = useState('');
@@ -246,10 +248,21 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
           const mappedDeliveries = (sess.deliveries || []).map(d => {
             const rawId = d.rawItemId?._id || d.rawItemId;
             const rItem = rawItems.find(r => r._id === rawId?.toString());
+            const qty = d.quantity || 0;
+            let boxesInput = '';
+            let piecesInput = String(qty);
+            if (rItem && rItem.quantityPerBox > 0) {
+              const b = Math.floor(qty / rItem.quantityPerBox);
+              const l = qty % rItem.quantityPerBox;
+              boxesInput = b === 0 ? '' : String(b);
+              piecesInput = l === 0 ? '' : String(l);
+            }
             return {
               rawItemId: rawId?.toString() || '',
               name: rItem ? rItem.name : 'Unknown Ingredient',
-              quantity: d.quantity || 0,
+              quantity: qty,
+              boxesInput,
+              piecesInput,
               price: d.price || 0,
               date: manageDate
             };
@@ -280,10 +293,21 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
           (sess.deliveries || []).forEach(d => {
             const rawId = d.rawItemId?._id || d.rawItemId;
             const rItem = rawItems.find(r => r._id === rawId?.toString());
+            const qty = d.quantity || 0;
+            let boxesInput = '';
+            let piecesInput = String(qty);
+            if (rItem && rItem.quantityPerBox > 0) {
+              const b = Math.floor(qty / rItem.quantityPerBox);
+              const l = qty % rItem.quantityPerBox;
+              boxesInput = b === 0 ? '' : String(b);
+              piecesInput = l === 0 ? '' : String(l);
+            }
             allDeliveries.push({
               rawItemId: rawId?.toString() || '',
               name: rItem ? rItem.name : 'Unknown Ingredient',
-              quantity: d.quantity || 0,
+              quantity: qty,
+              boxesInput,
+              piecesInput,
               price: d.price || 0,
               date: dStr
             });
@@ -501,10 +525,28 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
 
     const targetDate = manageDateMode === 'single' ? manageDate : (newDeliveryDate || manageStartDate);
 
+    const qtyPerBox = rItem.quantityPerBox || 0;
+    let qty = 0;
+    let boxesInput = '';
+    let piecesInput = '';
+
+    if (qtyPerBox > 0) {
+      const boxes = Number(newDeliveryBoxes) || 0;
+      const pieces = Number(newDeliveryPieces) || 0;
+      qty = (boxes * qtyPerBox) + pieces;
+      boxesInput = newDeliveryBoxes;
+      piecesInput = newDeliveryPieces;
+    } else {
+      qty = Number(newDeliveryQuantity) || 0;
+      piecesInput = newDeliveryQuantity;
+    }
+
     const newItem = {
       rawItemId: newDeliveryRawItemId,
       name: rItem.name,
-      quantity: Number(newDeliveryQuantity) || 0,
+      quantity: qty,
+      boxesInput,
+      piecesInput,
       price: Number(newDeliveryPrice) || 0,
       date: targetDate
     };
@@ -512,6 +554,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
     setManageDeliveries(prev => [...prev, newItem]);
     setNewDeliveryRawItemId('');
     setNewDeliveryQuantity('');
+    setNewDeliveryBoxes('');
+    setNewDeliveryPieces('');
     setNewDeliveryPrice('');
   };
 
@@ -553,6 +597,25 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
     setEndingCounts(prev => ({ ...prev, [itemId]: total }));
   };
 
+  const handleUpdateRawItemBoxQty = async (rawItemId, newQtyPerBox) => {
+    const rawItem = rawItems.find(r => r._id === rawItemId);
+    if (!rawItem) return;
+    try {
+      await api.updateRawItem(rawItemId, {
+        name: rawItem.name,
+        unit: rawItem.unit,
+        price: rawItem.price,
+        quantityPerBox: Number(newQtyPerBox) || 0
+      });
+      if (onRefreshAll) {
+        await onRefreshAll();
+      }
+    } catch (err) {
+      console.error('Failed to update raw item box qty', err);
+      setError(err.message || 'Failed to update raw item box quantity configuration.');
+    }
+  };
+
   // Upload Invoice handlers
   const handleInvoiceUpload = async (e) => {
     const file = e.target.files[0];
@@ -568,7 +631,25 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
     try {
       const response = await api.parseInvoice(formData);
       if (response && Array.isArray(response.deliveries)) {
-        setExtractedInvoiceItems(response.deliveries);
+        const formatted = response.deliveries.map(item => {
+          const matchedRaw = rawItems.find(r => r._id === item.rawItemId);
+          if (matchedRaw && matchedRaw.quantityPerBox > 0) {
+            return {
+              ...item,
+              boxesInput: String(item.quantity || 0),
+              piecesInput: '0',
+              quantity: (Number(item.quantity) || 0) * matchedRaw.quantityPerBox
+            };
+          } else {
+            return {
+              ...item,
+              boxesInput: '',
+              piecesInput: String(item.quantity || 0),
+              quantity: Number(item.quantity) || 0
+            };
+          }
+        });
+        setExtractedInvoiceItems(formatted);
         setIsInvoiceModalOpen(true);
       } else {
         throw new Error('Gemini failed to extract any delivery items.');
@@ -618,6 +699,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
         rawItemId: item.rawItemId,
         name: rawItems.find(r => r._id === item.rawItemId)?.name || item.name,
         quantity: Number(item.quantity),
+        boxesInput: item.boxesInput || '',
+        piecesInput: item.piecesInput || String(item.quantity),
         price: Number(item.price) || 0
       }));
 
@@ -1016,7 +1099,17 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                     {deliveries.map((item, idx) => (
                       <div key={idx} style={{ display: 'flex', justifyContext: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '6px', fontSize: '0.75rem' }}>
                         <div style={{ flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 500 }}>{item.name}</div>
-                        <div style={{ marginRight: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>+{item.quantity} {rawItems.find(r => r._id === item.rawItemId)?.unit || 'pcs'}</div>
+                        <div style={{ marginRight: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>
+                          {(() => {
+                            const rItem = rawItems.find(r => r._id === item.rawItemId);
+                            if (rItem && rItem.quantityPerBox > 0) {
+                              const b = Math.floor(item.quantity / rItem.quantityPerBox);
+                              const l = item.quantity % rItem.quantityPerBox;
+                              return `+${b} box ${l} pcs (${item.quantity} ${rItem.unit})`;
+                            }
+                            return `+${item.quantity} ${rItem?.unit || 'pcs'}`;
+                          })()}
+                        </div>
                         <button
                           type="button"
                           onClick={() => setDeliveries(prev => prev.filter((_, i) => i !== idx))}
@@ -1374,15 +1467,38 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                           </td>
                         )}
                         <td data-label="Qty">
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="Qty"
-                            value={newDeliveryQuantity}
-                            onChange={(e) => setNewDeliveryQuantity(e.target.value)}
-                            className="input-field"
-                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
-                          />
+                          {newDeliveryRawItemId && rawItems.find(r => r._id === newDeliveryRawItemId)?.quantityPerBox > 0 ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                              <input
+                                type="number"
+                                placeholder="Boxes"
+                                value={newDeliveryBoxes}
+                                onChange={(e) => setNewDeliveryBoxes(e.target.value)}
+                                className="input-field"
+                                style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                              />
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
+                              <input
+                                type="number"
+                                placeholder="Pcs"
+                                value={newDeliveryPieces}
+                                onChange={(e) => setNewDeliveryPieces(e.target.value)}
+                                className="input-field"
+                                style={{ maxWidth: '55px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                              />
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Qty"
+                              value={newDeliveryQuantity}
+                              onChange={(e) => setNewDeliveryQuantity(e.target.value)}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                            />
+                          )}
                         </td>
                         <td data-label="Price ($)">
                           <input
@@ -1421,6 +1537,9 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                       ) : (
                         manageDeliveries.map((item, idx) => {
                           if (!item.name.toLowerCase().includes(searchManageDeliveries.toLowerCase())) return null;
+                          const rItem = rawItems.find(r => r._id === item.rawItemId);
+                          const hasBoxConfig = rItem && rItem.quantityPerBox > 0;
+
                           return (
                             <tr key={item.id || idx}>
                               <td data-label="Description" style={{ fontWeight: 600 }}>
@@ -1441,8 +1560,21 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                   value={item.rawItemId || ''}
                                   onChange={(e) => {
                                     const updated = [...manageDeliveries];
-                                    updated[idx].rawItemId = e.target.value;
-                                    updated[idx].name = rawItems.find(r => r._id === e.target.value)?.name || updated[idx].name;
+                                    const newRawId = e.target.value;
+                                    updated[idx].rawItemId = newRawId;
+                                    const newRaw = rawItems.find(r => r._id === newRawId);
+                                    updated[idx].name = newRaw?.name || updated[idx].name;
+                                    if (newRaw && newRaw.quantityPerBox > 0) {
+                                      const currentQty = Number(updated[idx].boxesInput) || Number(updated[idx].piecesInput) || updated[idx].quantity || 0;
+                                      updated[idx].boxesInput = String(currentQty);
+                                      updated[idx].piecesInput = '0';
+                                      updated[idx].quantity = currentQty * newRaw.quantityPerBox;
+                                    } else {
+                                      const currentQty = Number(updated[idx].boxesInput) * (rItem?.quantityPerBox || 1) + (Number(updated[idx].piecesInput) || 0) || updated[idx].quantity || 0;
+                                      updated[idx].boxesInput = '';
+                                      updated[idx].piecesInput = String(currentQty);
+                                      updated[idx].quantity = currentQty;
+                                    }
                                     setManageDeliveries(updated);
                                   }}
                                   className="input-field"
@@ -1462,18 +1594,59 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 </td>
                               )}
                               <td data-label="Qty">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={item.quantity}
-                                  onChange={(e) => {
-                                    const updated = [...manageDeliveries];
-                                    updated[idx].quantity = Number(e.target.value) || 0;
-                                    setManageDeliveries(updated);
-                                  }}
-                                  className="input-field"
-                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
-                                />
+                                {hasBoxConfig ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                    <input
+                                      type="number"
+                                      placeholder="Boxes"
+                                      value={item.boxesInput ?? ''}
+                                      onChange={(e) => {
+                                        const updated = [...manageDeliveries];
+                                        updated[idx].boxesInput = e.target.value;
+                                        const boxes = Number(e.target.value) || 0;
+                                        const pieces = Number(updated[idx].piecesInput) || 0;
+                                        updated[idx].quantity = (boxes * rItem.quantityPerBox) + pieces;
+                                        setManageDeliveries(updated);
+                                      }}
+                                      className="input-field"
+                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                    />
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
+                                    <input
+                                      type="number"
+                                      placeholder="Pcs"
+                                      value={item.piecesInput ?? ''}
+                                      onChange={(e) => {
+                                        const updated = [...manageDeliveries];
+                                        updated[idx].piecesInput = e.target.value;
+                                        const boxes = Number(updated[idx].boxesInput) || 0;
+                                        const pieces = Number(e.target.value) || 0;
+                                        updated[idx].quantity = (boxes * rItem.quantityPerBox) + pieces;
+                                        setManageDeliveries(updated);
+                                      }}
+                                      className="input-field"
+                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                    />
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
+                                      (= {item.quantity || 0})
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={item.quantity}
+                                    onChange={(e) => {
+                                      const updated = [...manageDeliveries];
+                                      updated[idx].quantity = Number(e.target.value) || 0;
+                                      updated[idx].piecesInput = e.target.value;
+                                      setManageDeliveries(updated);
+                                    }}
+                                    className="input-field"
+                                    style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                  />
+                                )}
                               </td>
                               <td data-label="Price ($)">
                                 <input
@@ -1862,7 +2035,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
       {/* ================= INVOICE GEMINI EXTRACTION MODAL ================= */}
       {isInvoiceModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '640px', position: 'relative' }}>
+          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '850px', width: '95%', position: 'relative' }}>
             <button 
               onClick={() => setIsInvoiceModalOpen(false)} 
               style={{ position: 'absolute', right: '1.25rem', top: '1.25rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
@@ -1881,46 +2054,140 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                 <thead>
                   <tr>
                     <th>Extracted Description</th>
-                    <th>Qty Received</th>
                     <th>Mapped Database Ingredient</th>
+                    <th style={{ width: '110px', textAlign: 'center' }}>Pcs/Box</th>
+                    <th style={{ minWidth: '220px' }}>Qty Received</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {extractedInvoiceItems.map((item, idx) => (
-                    <tr key={idx} style={{ background: item.rawItemId ? '' : 'rgba(239, 68, 68, 0.05)' }}>
-                      <td data-label="Extracted Description">{item.name}</td>
-                      <td data-label="Qty Received">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const updated = [...extractedInvoiceItems];
-                            updated[idx].quantity = Number(e.target.value) || 0;
-                            setExtractedInvoiceItems(updated);
-                          }}
-                          className="input-field"
-                          style={{ maxWidth: '70px', height: '28px', fontSize: '0.75rem', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
-                        />
-                      </td>
-                      <td data-label="Mapped Ingredient">
-                        <select
-                          className="input-field"
-                          value={item.rawItemId || ''}
-                          onChange={(e) => {
-                            const updated = [...extractedInvoiceItems];
-                            updated[idx].rawItemId = e.target.value || null;
-                            setExtractedInvoiceItems(updated);
-                          }}
-                          style={{ fontSize: '0.75rem', padding: '0.2rem', height: '28px', background: 'rgba(0,0,0,0.3)', width: '100%' }}
-                        >
-                          <option value="">-- Unmapped / Skip Item --</option>
-                          {rawItems.map(raw => (
-                            <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
+                  {extractedInvoiceItems.map((item, idx) => {
+                    const matchedRaw = rawItems.find(r => r._id === item.rawItemId);
+                    const qtyPerBox = matchedRaw ? (matchedRaw.quantityPerBox || 0) : 0;
+                    const hasBoxConfig = qtyPerBox > 0;
+
+                    return (
+                      <tr key={idx} style={{ background: item.rawItemId ? '' : 'rgba(239, 68, 68, 0.05)' }}>
+                        <td data-label="Extracted Description">{item.name}</td>
+                        <td data-label="Mapped Ingredient">
+                          <select
+                            className="input-field"
+                            value={item.rawItemId || ''}
+                            onChange={(e) => {
+                              const updated = [...extractedInvoiceItems];
+                              const newRawId = e.target.value || null;
+                              updated[idx].rawItemId = newRawId;
+                              
+                              const newRaw = rawItems.find(r => r._id === newRawId);
+                              if (newRaw && newRaw.quantityPerBox > 0) {
+                                const currentQty = Number(updated[idx].boxesInput) || Number(updated[idx].piecesInput) || updated[idx].quantity || 0;
+                                updated[idx].boxesInput = String(currentQty);
+                                updated[idx].piecesInput = '0';
+                                updated[idx].quantity = currentQty * newRaw.quantityPerBox;
+                              } else {
+                                const currentQty = Number(updated[idx].boxesInput) * (matchedRaw?.quantityPerBox || 1) + (Number(updated[idx].piecesInput) || 0) || updated[idx].quantity || 0;
+                                updated[idx].boxesInput = '';
+                                updated[idx].piecesInput = String(currentQty);
+                                updated[idx].quantity = currentQty;
+                              }
+                              setExtractedInvoiceItems(updated);
+                            }}
+                            style={{ fontSize: '0.75rem', padding: '0.2rem', height: '28px', background: 'rgba(0,0,0,0.3)', width: '100%' }}
+                          >
+                            <option value="">-- Unmapped / Skip Item --</option>
+                            {rawItems.map(raw => (
+                              <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td data-label="Pcs/Box" style={{ textAlign: 'center' }}>
+                          {item.rawItemId ? (
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Pcs/Box"
+                              value={qtyPerBox || ''}
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                if (matchedRaw) matchedRaw.quantityPerBox = val;
+                                const updated = [...extractedInvoiceItems];
+                                const targetItem = updated[idx];
+                                const boxes = Number(targetItem.boxesInput) || 0;
+                                const pieces = Number(targetItem.piecesInput) || 0;
+                                targetItem.quantity = val > 0 ? (boxes * val + pieces) : pieces;
+                                setExtractedInvoiceItems(updated);
+                              }}
+                              onBlur={async (e) => {
+                                const val = Number(e.target.value) || 0;
+                                await handleUpdateRawItemBoxQty(item.rawItemId, val);
+                              }}
+                              className="input-field"
+                              style={{ maxWidth: '80px', height: '28px', fontSize: '0.75rem', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', margin: '0 auto' }}
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td data-label="Qty Received">
+                          {hasBoxConfig ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <input
+                                type="number"
+                                placeholder="Boxes"
+                                className="input-field"
+                                value={item.boxesInput ?? ''}
+                                onChange={(e) => {
+                                  const updated = [...extractedInvoiceItems];
+                                  updated[idx].boxesInput = e.target.value;
+                                  const boxes = Number(e.target.value) || 0;
+                                  const pieces = Number(updated[idx].piecesInput) || 0;
+                                  updated[idx].quantity = (boxes * qtyPerBox) + pieces;
+                                  setExtractedInvoiceItems(updated);
+                                }}
+                                style={{ maxWidth: '60px', height: '28px', fontSize: '0.75rem', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                              />
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
+                              <input
+                                type="number"
+                                placeholder="Pcs"
+                                className="input-field"
+                                value={item.piecesInput ?? ''}
+                                onChange={(e) => {
+                                  const updated = [...extractedInvoiceItems];
+                                  updated[idx].piecesInput = e.target.value;
+                                  const boxes = Number(updated[idx].boxesInput) || 0;
+                                  const pieces = Number(e.target.value) || 0;
+                                  updated[idx].quantity = (boxes * qtyPerBox) + pieces;
+                                  setExtractedInvoiceItems(updated);
+                                }}
+                                style={{ maxWidth: '60px', height: '28px', fontSize: '0.75rem', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                              />
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                                (= {item.quantity || 0} {matchedRaw?.unit})
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <input
+                                type="number"
+                                placeholder="Qty"
+                                className="input-field"
+                                value={item.piecesInput ?? ''}
+                                onChange={(e) => {
+                                  const updated = [...extractedInvoiceItems];
+                                  updated[idx].piecesInput = e.target.value;
+                                  updated[idx].quantity = Number(e.target.value) || 0;
+                                  setExtractedInvoiceItems(updated);
+                                }}
+                                style={{ maxWidth: '70px', height: '28px', fontSize: '0.75rem', padding: '0.2rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                              />
+                              {matchedRaw && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{matchedRaw.unit}</span>}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2162,7 +2429,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
       {/* ================= EDIT DELIVERIES POPUP MODAL ================= */}
       {isEditDeliveriesModalOpen && (
         <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '750px', width: '90%', position: 'relative', background: 'rgba(18, 20, 26, 0.95)', backdropFilter: 'blur(20px)', border: 'var(--glass-border)' }}>
+          <div className="modal-content card animate-fade-in" style={{ padding: '2rem', maxWidth: '850px', width: '90%', position: 'relative', background: 'rgba(18, 20, 26, 0.95)', backdropFilter: 'blur(20px)', border: 'var(--glass-border)' }}>
             <button 
               onClick={() => {
                 setIsEditDeliveriesModalOpen(false);
@@ -2235,6 +2502,9 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                       const matchesId = !editDeliveriesSelectedId || item.rawItemId === editDeliveriesSelectedId;
                       if (!matchesSearch || !matchesId) return null;
 
+                      const rItem = rawItems.find(r => r._id === item.rawItemId);
+                      const hasBoxConfig = rItem && rItem.quantityPerBox > 0;
+
                       return (
                         <tr key={idx}>
                           <td data-label="Description" style={{ fontWeight: 600 }}>
@@ -2255,8 +2525,21 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               value={item.rawItemId || ''}
                               onChange={(e) => {
                                 const updated = [...deliveries];
-                                updated[idx].rawItemId = e.target.value;
-                                updated[idx].name = rawItems.find(r => r._id === e.target.value)?.name || updated[idx].name;
+                                const newRawId = e.target.value;
+                                updated[idx].rawItemId = newRawId;
+                                const newRaw = rawItems.find(r => r._id === newRawId);
+                                updated[idx].name = newRaw?.name || updated[idx].name;
+                                if (newRaw && newRaw.quantityPerBox > 0) {
+                                  const currentQty = Number(updated[idx].boxesInput) || Number(updated[idx].piecesInput) || updated[idx].quantity || 0;
+                                  updated[idx].boxesInput = String(currentQty);
+                                  updated[idx].piecesInput = '0';
+                                  updated[idx].quantity = currentQty * newRaw.quantityPerBox;
+                                } else {
+                                  const currentQty = Number(updated[idx].boxesInput) * (rItem?.quantityPerBox || 1) + (Number(updated[idx].piecesInput) || 0) || updated[idx].quantity || 0;
+                                  updated[idx].boxesInput = '';
+                                  updated[idx].piecesInput = String(currentQty);
+                                  updated[idx].quantity = currentQty;
+                                }
                                 setDeliveries(updated);
                               }}
                               className="input-field"
@@ -2269,18 +2552,59 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             </select>
                           </td>
                           <td data-label="Qty">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.quantity}
-                              onChange={(e) => {
-                                const updated = [...deliveries];
-                                updated[idx].quantity = Number(e.target.value) || 0;
-                                setDeliveries(updated);
-                              }}
-                              className="input-field"
-                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
-                            />
+                            {hasBoxConfig ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                <input
+                                  type="number"
+                                  placeholder="Boxes"
+                                  value={item.boxesInput ?? ''}
+                                  onChange={(e) => {
+                                    const updated = [...deliveries];
+                                    updated[idx].boxesInput = e.target.value;
+                                    const boxes = Number(e.target.value) || 0;
+                                    const pieces = Number(updated[idx].piecesInput) || 0;
+                                    updated[idx].quantity = (boxes * rItem.quantityPerBox) + pieces;
+                                    setDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
+                                <input
+                                  type="number"
+                                  placeholder="Pcs"
+                                  value={item.piecesInput ?? ''}
+                                  onChange={(e) => {
+                                    const updated = [...deliveries];
+                                    updated[idx].piecesInput = e.target.value;
+                                    const boxes = Number(updated[idx].boxesInput) || 0;
+                                    const pieces = Number(e.target.value) || 0;
+                                    updated[idx].quantity = (boxes * rItem.quantityPerBox) + pieces;
+                                    setDeliveries(updated);
+                                  }}
+                                  className="input-field"
+                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                />
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
+                                  (= {item.quantity || 0})
+                                </span>
+                              </div>
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const updated = [...deliveries];
+                                  updated[idx].quantity = Number(e.target.value) || 0;
+                                  updated[idx].piecesInput = e.target.value;
+                                  setDeliveries(updated);
+                                }}
+                                className="input-field"
+                                style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                              />
+                            )}
                           </td>
                           <td data-label="Price ($)">
                             <input
