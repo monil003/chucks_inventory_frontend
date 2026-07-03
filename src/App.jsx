@@ -152,7 +152,7 @@ export default function App() {
   // Operation callbacks passed to pages
   const handleCreateRawItem = async (item) => {
     const newItem = await api.createRawItem(item);
-    setRawItems(prev => [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name)));
+    setRawItems(prev => [...prev, newItem]);
   };
 
   const handleDeleteRawItem = async (id) => {
@@ -162,7 +162,7 @@ export default function App() {
 
   const handleUpdateRawItem = async (id, updatedItem) => {
     const updated = await api.updateRawItem(id, updatedItem);
-    setRawItems(prev => prev.map(item => item._id === id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)));
+    setRawItems(prev => prev.map(item => item._id === id ? updated : item));
     
     setRecipes(prevRecipes => prevRecipes.map(recipe => {
       const updatedIngredients = recipe.ingredients.map(ing => {

@@ -11,6 +11,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
 
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortByAlphabetical, setSortByAlphabetical] = useState(false);
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -112,6 +113,10 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const displayedItems = sortByAlphabetical
+    ? [...filteredItems].sort((a, b) => a.name.localeCompare(b.name))
+    : filteredItems;
+
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
@@ -150,20 +155,63 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
         <h2 className="form-label" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Current Ingredients ({rawItems.length})</h2>
 
         {rawItems.length > 0 && (
-          <div className="form-group" style={{ position: 'relative', marginBottom: '1.5rem' }}>
-            <input
-              type="text"
-              className="input-field"
-              placeholder="Search ingredients..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '2.5rem' }}
-            />
-            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ position: 'relative', flex: 1, minWidth: '240px', marginBottom: 0 }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Search ingredients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
+              />
+              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            </div>
+
+            {/* Custom styled premium switch toggle */}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.75rem', 
+              background: 'rgba(255, 255, 255, 0.03)', 
+              padding: '0.5rem 1rem', 
+              borderRadius: '12px', 
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              userSelect: 'none'
+            }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Sort Alphabetically</span>
+              <button
+                type="button"
+                onClick={() => setSortByAlphabetical(prev => !prev)}
+                style={{
+                  position: 'relative',
+                  width: '42px',
+                  height: '24px',
+                  borderRadius: '12px',
+                  background: sortByAlphabetical ? 'var(--primary)' : 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s ease',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  transform: sortByAlphabetical ? 'translateX(22px)' : 'translateX(4px)',
+                  transition: 'transform 0.2s ease'
+                }} />
+              </button>
+            </div>
           </div>
         )}
         
-        {filteredItems.length > 0 ? (
+        {displayedItems.length > 0 ? (
           <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
             <table className="custom-table responsive-table">
               <thead>
@@ -176,7 +224,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map(item => (
+                {displayedItems.map(item => (
                   <tr key={item._id} style={editingItem?._id === item._id ? { background: 'rgba(249, 115, 22, 0.08)' } : {}}>
                     <td data-label="Name" style={{ fontWeight: 600 }}>{item.name}</td>
                     <td data-label="Unit">
