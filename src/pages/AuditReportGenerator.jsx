@@ -47,6 +47,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   // Gemini extraction states
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [extractedInvoiceItems, setExtractedInvoiceItems] = useState([]);
+  const [invoiceDate, setInvoiceDate] = useState('');
   const [parsingInvoice, setParsingInvoice] = useState(false);
 
   const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
@@ -236,6 +237,73 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   useEffect(() => {
     fetchEndingCounts();
   }, [endDate, rawItems]);
+
+  const isRangeSession = (sess) => {
+    if (sess.startDate && sess.endDate) {
+      const sD = new Date(sess.startDate).toISOString().split('T')[0];
+      const eD = new Date(sess.endDate).toISOString().split('T')[0];
+      return sD !== eD;
+    }
+    return false;
+  };
+
+  const fetchDeliveriesForRange = () => {
+    if (!startDate || !endDate) return;
+    try {
+      const startD = new Date(startDate);
+      startD.setUTCHours(0,0,0,0);
+      const endD = new Date(endDate);
+      endD.setUTCHours(0,0,0,0);
+
+      // Find all sessions in range
+      const sessionsInRange = sessions.filter(sess => {
+        if (!sess.date) return false;
+        const d = new Date(sess.date);
+        d.setUTCHours(0,0,0,0);
+        return d >= startD && d <= endD;
+      });
+
+      const loadedDeliveries = [];
+      sessionsInRange.forEach(sess => {
+        // Skip range sessions to avoid aggregate double-counting
+        if (isRangeSession(sess)) return;
+
+        const dStr = new Date(sess.date).toISOString().split('T')[0];
+        (sess.deliveries || []).forEach(d => {
+          const rawId = d.rawItemId?._id || d.rawItemId;
+          const rItem = rawItems.find(r => r._id === rawId?.toString());
+          const qty = d.quantity || 0;
+          if (qty === 0) return; // Skip zero quantities
+
+          let boxesInput = '';
+          let piecesInput = String(qty);
+          if (rItem && rItem.quantityPerBox > 0) {
+            const b = Math.floor(qty / rItem.quantityPerBox);
+            const l = qty % rItem.quantityPerBox;
+            boxesInput = b === 0 ? '' : String(b);
+            piecesInput = l === 0 ? '' : String(l);
+          }
+          loadedDeliveries.push({
+            rawItemId: rawId?.toString() || '',
+            name: rItem ? rItem.name : 'Unknown Ingredient',
+            quantity: qty,
+            boxesInput,
+            piecesInput,
+            price: d.price || 0,
+            date: dStr
+          });
+        });
+      });
+
+      setDeliveries(loadedDeliveries);
+    } catch (err) {
+      console.error('Error fetching deliveries for range:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeliveriesForRange();
+  }, [startDate, endDate, rawItems, sessions]);
 
   const fetchManageData = async () => {
     setLoadingManageData(true);
@@ -631,6 +699,9 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
     try {
       const response = await api.parseInvoice(formData);
       if (response && Array.isArray(response.deliveries)) {
+        const extractedDate = response.invoiceDate || endDate;
+        setInvoiceDate(extractedDate);
+
         const formatted = response.deliveries.map(item => {
           const matchedRaw = rawItems.find(r => r._id === item.rawItemId);
           const qtyPerBox = matchedRaw ? (matchedRaw.quantityPerBox || 0) : 0;
@@ -639,7 +710,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
             receiveAs: 'box',
             boxesInput: String(item.quantity || 0),
             piecesInput: '0',
-            quantity: (Number(item.quantity) || 0) * qtyPerBox
+            quantity: (Number(item.quantity) || 0) * qtyPerBox,
+            date: extractedDate
           };
         });
         setExtractedInvoiceItems(formatted);
@@ -695,7 +767,8 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
         boxesInput: item.boxesInput || '',
         piecesInput: item.piecesInput || String(item.quantity),
         receiveAs: item.receiveAs || 'box',
-        price: Number(item.price) || 0
+        price: Number(item.price) || 0,
+        date: item.date || invoiceDate || endDate
       }));
 
     setDeliveries(prev => [...prev, ...validDeliveries]);
@@ -1092,7 +1165,9 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                   <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {deliveries.map((item, idx) => (
                       <div key={idx} style={{ display: 'flex', justifyContext: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '6px', fontSize: '0.75rem' }}>
-                        <div style={{ flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 500 }}>{item.name}</div>
+                        <div style={{ flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                          {item.name} <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginLeft: '0.4rem' }}>({item.date || endDate})</span>
+                        </div>
                         <div style={{ marginRight: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>
                           {(() => {
                             const rItem = rawItems.find(r => r._id === item.rawItemId);
@@ -1421,10 +1496,10 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                       <tr>
                         <th>Description</th>
                         <th>Mapped Database Ingredient</th>
-                        {manageDateMode === 'range' && <th style={{ width: '105px' }}>Date</th>}
-                        <th style={{ width: '95px', textAlign: 'right' }}>Qty</th>
-                        <th style={{ width: '95px', textAlign: 'right' }}>Price ($)</th>
-                        <th style={{ width: '50px', textAlign: 'center' }}>Action</th>
+                        {manageDateMode === 'range' && <th style={{ width: '120px', minWidth: '120px' }}>Date</th>}
+                        <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Qty</th>
+                        <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Price ($)</th>
+                        <th style={{ width: '60px', minWidth: '60px', textAlign: 'center' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1460,7 +1535,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             </select>
                           </td>
                         )}
-                        <td data-label="Qty">
+                        <td data-label="Qty" style={{ width: '130px', minWidth: '130px' }}>
                           {newDeliveryRawItemId && rawItems.find(r => r._id === newDeliveryRawItemId)?.quantityPerBox > 0 ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
                               <input
@@ -1490,11 +1565,11 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               value={newDeliveryQuantity}
                               onChange={(e) => setNewDeliveryQuantity(e.target.value)}
                               className="input-field"
-                              style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                              style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)', width: '100%', boxSizing: 'border-box' }}
                             />
                           )}
                         </td>
-                        <td data-label="Price ($)">
+                        <td data-label="Price ($)" style={{ width: '130px', minWidth: '130px' }}>
                           <input
                             type="number"
                             min="0"
@@ -1503,7 +1578,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             value={newDeliveryPrice}
                             onChange={(e) => setNewDeliveryPrice(e.target.value)}
                             className="input-field"
-                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)', width: '100%', boxSizing: 'border-box' }}
                           />
                         </td>
                         <td data-label="Action" style={{ textAlign: 'center' }}>
@@ -1587,7 +1662,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                   </span>
                                 </td>
                               )}
-                              <td data-label="Qty">
+                              <td data-label="Qty" style={{ width: '130px', minWidth: '130px' }}>
                                 {hasBoxConfig ? (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
                                     <input
@@ -1638,11 +1713,11 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                       setManageDeliveries(updated);
                                     }}
                                     className="input-field"
-                                    style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                    style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                                   />
                                 )}
                               </td>
-                              <td data-label="Price ($)">
+                              <td data-label="Price ($)" style={{ width: '130px', minWidth: '130px' }}>
                                 <input
                                   type="number"
                                   min="0"
@@ -1654,7 +1729,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setManageDeliveries(updated);
                                   }}
                                   className="input-field"
-                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </td>
                               <td data-label="Action" style={{ textAlign: 'center' }}>
@@ -1829,12 +1904,12 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                   <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '130px' }}>SKU / Code</th>
+                        <th style={{ width: '130px', minWidth: '130px' }}>SKU / Code</th>
                         <th>Menu Product Name</th>
-                        {manageDateMode === 'range' && <th style={{ width: '105px' }}>Date</th>}
-                        <th style={{ width: '95px', textAlign: 'right' }}>Qty Sold</th>
-                        <th style={{ width: '95px', textAlign: 'right' }}>Price ($)</th>
-                        <th style={{ width: '50px', textAlign: 'center' }}>Action</th>
+                        {manageDateMode === 'range' && <th style={{ width: '120px', minWidth: '120px' }}>Date</th>}
+                        <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Qty Sold</th>
+                        <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Price ($)</th>
+                        <th style={{ width: '60px', minWidth: '60px', textAlign: 'center' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1872,7 +1947,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             </select>
                           </td>
                         )}
-                        <td data-label="Qty Sold">
+                        <td data-label="Qty Sold" style={{ width: '130px', minWidth: '130px' }}>
                           <input
                             type="number"
                             min="0"
@@ -1880,10 +1955,10 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             value={newSalesQuantitySold}
                             onChange={(e) => setNewSalesQuantitySold(e.target.value)}
                             className="input-field"
-                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)', width: '100%', boxSizing: 'border-box' }}
                           />
                         </td>
-                        <td data-label="Price ($)">
+                        <td data-label="Price ($)" style={{ width: '130px', minWidth: '130px' }}>
                           <input
                             type="number"
                             min="0"
@@ -1892,7 +1967,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             value={newSalesPrice}
                             onChange={(e) => setNewSalesPrice(e.target.value)}
                             className="input-field"
-                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)' }}
+                            style={{ height: '30px', fontSize: '0.75rem', textAlign: 'right', background: 'rgba(0,0,0,0.3)', width: '100%', boxSizing: 'border-box' }}
                           />
                         </td>
                         <td data-label="Action" style={{ textAlign: 'center' }}>
@@ -1965,7 +2040,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                   </span>
                                 </td>
                               )}
-                              <td data-label="Qty Sold">
+                              <td data-label="Qty Sold" style={{ width: '130px', minWidth: '130px' }}>
                                 <input
                                   type="number"
                                   min="0"
@@ -1976,10 +2051,10 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setManageSales(updated);
                                   }}
                                   className="input-field"
-                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </td>
-                              <td data-label="Price ($)">
+                              <td data-label="Price ($)" style={{ width: '130px', minWidth: '130px' }}>
                                 <input
                                   type="number"
                                   min="0"
@@ -1991,7 +2066,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setManageSales(updated);
                                   }}
                                   className="input-field"
-                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                  style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </td>
                               <td data-label="Action" style={{ textAlign: 'center' }}>
@@ -2042,6 +2117,21 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Review the extracted invoice items below. Map unmatched items to the correct raw ingredient database key before confirming.
             </p>
+
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(249,115,22,0.05)', border: '1px dashed rgba(249,115,22,0.2)', borderRadius: '8px' }}>
+              <span style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Invoice / Delivery Date:</span>
+              <input
+                type="date"
+                className="input-field"
+                value={invoiceDate || endDate}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  setInvoiceDate(newDate);
+                  setExtractedInvoiceItems(prev => prev.map(item => ({ ...item, date: newDate })));
+                }}
+                style={{ maxWidth: '180px', height: '32px', fontSize: '0.85rem', padding: '0.25rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.1)' }}
+              />
+            </div>
 
             <div className="table-container" style={{ maxHeight: '320px', overflowY: 'auto', marginBottom: '1.5rem' }}>
               <table className="custom-table responsive-table" style={{ fontSize: '0.8rem' }}>
@@ -2574,6 +2664,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                     <tr>
                       <th>Description</th>
                       <th>Mapped Database Ingredient</th>
+                      <th style={{ width: '130px' }}>Date</th>
                       <th style={{ width: '100px', textAlign: 'right' }}>Qty</th>
                       <th style={{ width: '100px', textAlign: 'right' }}>Price ($)</th>
                       <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
@@ -2631,6 +2722,22 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               <option value="">-- Select Ingredient --</option>
                               {rawItems.map(raw => (
                                 <option key={raw._id} value={raw._id}>{raw.name} ({raw.unit})</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td data-label="Date">
+                            <select
+                              value={item.date || endDate}
+                              onChange={(e) => {
+                                const updated = [...deliveries];
+                                updated[idx].date = e.target.value;
+                                setDeliveries(updated);
+                              }}
+                              className="input-field"
+                              style={{ height: '30px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', width: '100%' }}
+                            >
+                              {getDatesInRange(startDate, endDate).map(d => (
+                                <option key={d} value={d}>{d}</option>
                               ))}
                             </select>
                           </td>
