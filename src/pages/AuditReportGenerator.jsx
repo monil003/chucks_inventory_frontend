@@ -1497,7 +1497,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                         <th>Description</th>
                         <th>Mapped Database Ingredient</th>
                         {manageDateMode === 'range' && <th style={{ width: '120px', minWidth: '120px' }}>Date</th>}
-                        <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Qty</th>
+                        <th style={{ width: '160px', minWidth: '160px', textAlign: 'right' }}>Qty</th>
                         <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Price ($)</th>
                         <th style={{ width: '60px', minWidth: '60px', textAlign: 'center' }}>Action</th>
                       </tr>
@@ -1535,7 +1535,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                             </select>
                           </td>
                         )}
-                        <td data-label="Qty" style={{ width: '130px', minWidth: '130px' }}>
+                        <td data-label="Qty" style={{ width: '160px', minWidth: '160px' }}>
                           {newDeliveryRawItemId && rawItems.find(r => r._id === newDeliveryRawItemId)?.quantityPerBox > 0 ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
                               <input
@@ -1544,7 +1544,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 value={newDeliveryBoxes}
                                 onChange={(e) => setNewDeliveryBoxes(e.target.value)}
                                 className="input-field"
-                                style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0' }}
+                                style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                               />
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                               <input
@@ -1553,7 +1553,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 value={newDeliveryPieces}
                                 onChange={(e) => setNewDeliveryPieces(e.target.value)}
                                 className="input-field"
-                                style={{ maxWidth: '55px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0' }}
+                                style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                               />
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                             </div>
@@ -1662,7 +1662,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                   </span>
                                 </td>
                               )}
-                              <td data-label="Qty" style={{ width: '130px', minWidth: '130px' }}>
+                              <td data-label="Qty" style={{ width: '160px', minWidth: '160px' }}>
                                 {hasBoxConfig ? (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
                                     <input
@@ -1678,7 +1678,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                         setManageDeliveries(updated);
                                       }}
                                       className="input-field"
-                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
+                                      style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                                     />
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                                     <input
@@ -1694,7 +1694,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                         setManageDeliveries(updated);
                                       }}
                                       className="input-field"
-                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
+                                      style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                                     />
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                                     <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
@@ -2664,9 +2664,9 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                     <tr>
                       <th>Description</th>
                       <th>Mapped Database Ingredient</th>
-                      <th style={{ width: '130px' }}>Date</th>
-                      <th style={{ width: '100px', textAlign: 'right' }}>Qty</th>
-                      <th style={{ width: '100px', textAlign: 'right' }}>Price ($)</th>
+                      <th style={{ width: '120px', minWidth: '120px' }}>Date</th>
+                      <th style={{ width: '160px', minWidth: '160px', textAlign: 'right' }}>Qty</th>
+                      <th style={{ width: '130px', minWidth: '130px', textAlign: 'right' }}>Price ($)</th>
                       <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
@@ -2725,7 +2725,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               ))}
                             </select>
                           </td>
-                          <td data-label="Date">
+                          <td data-label="Date" style={{ width: '120px', minWidth: '120px' }}>
                             <select
                               value={item.date || endDate}
                               onChange={(e) => {
@@ -2741,7 +2741,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                               ))}
                             </select>
                           </td>
-                          <td data-label="Qty">
+                          <td data-label="Qty" style={{ width: '160px', minWidth: '160px' }}>
                             {hasBoxConfig ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
                                 <input
@@ -2757,7 +2757,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setDeliveries(updated);
                                   }}
                                   className="input-field"
-                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
+                                  style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                                 />
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                                 <input
@@ -2773,7 +2773,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setDeliveries(updated);
                                   }}
                                   className="input-field"
-                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
+                                  style={{ width: '48px', minWidth: '48px', flexShrink: 0, height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0 4px', boxSizing: 'border-box', borderRadius: '6px' }}
                                 />
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
@@ -2792,11 +2792,11 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                   setDeliveries(updated);
                                 }}
                                 className="input-field"
-                                style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                                style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                               />
                             )}
                           </td>
-                          <td data-label="Price ($)">
+                          <td data-label="Price ($)" style={{ width: '130px', minWidth: '130px' }}>
                             <input
                               type="number"
                               min="0"
@@ -2808,7 +2808,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 setDeliveries(updated);
                               }}
                               className="input-field"
-                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)' }}
+                              style={{ height: '30px', fontSize: '0.8rem', textAlign: 'right', background: 'rgba(0,0,0,0.2)', width: '100%', boxSizing: 'border-box' }}
                             />
                           </td>
                           <td data-label="Action" style={{ textAlign: 'center' }}>
