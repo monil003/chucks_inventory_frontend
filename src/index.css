@@ -310,6 +310,11 @@ body {
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
 }
 
+.custom-table .input-field {
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+}
+
 /* Search Dropdown / Autocomplete container */
 .autocomplete-container {
   position: relative;

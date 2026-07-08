@@ -1544,7 +1544,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 value={newDeliveryBoxes}
                                 onChange={(e) => setNewDeliveryBoxes(e.target.value)}
                                 className="input-field"
-                                style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                                style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0' }}
                               />
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                               <input
@@ -1553,7 +1553,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                 value={newDeliveryPieces}
                                 onChange={(e) => setNewDeliveryPieces(e.target.value)}
                                 className="input-field"
-                                style={{ maxWidth: '55px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}
+                                style={{ maxWidth: '55px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.3)', padding: '0' }}
                               />
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                             </div>
@@ -1678,7 +1678,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                         setManageDeliveries(updated);
                                       }}
                                       className="input-field"
-                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
                                     />
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                                     <input
@@ -1694,7 +1694,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                         setManageDeliveries(updated);
                                       }}
                                       className="input-field"
-                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                      style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
                                     />
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                                     <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
@@ -2757,7 +2757,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setDeliveries(updated);
                                   }}
                                   className="input-field"
-                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
                                 />
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>box +</span>
                                 <input
@@ -2773,7 +2773,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                                     setDeliveries(updated);
                                   }}
                                   className="input-field"
-                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                  style={{ maxWidth: '50px', height: '30px', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', padding: '0' }}
                                 />
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>pcs</span>
                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' }}>
