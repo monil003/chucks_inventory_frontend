@@ -866,6 +866,7 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
   const getFilteredAuditRows = () => {
     if (!generatedReport || !generatedReport.variance) return [];
     return generatedReport.variance.filter(v => {
+      if (activeFilter === 'accurate') return v.rawItemId?.isAccurateCount === true;
       const val = v.varianceValue;
       if (activeFilter === 'loss') return val < -0.05;
       if (activeFilter === 'overage') return val > 0.05;
@@ -948,32 +949,58 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
           </div>
 
           {/* Audit Stats Panel */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
-            <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'all' ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('all')}>
-              <div style={{ fontSize: '2rem', fontWeight: 700 }}>{total}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Audited Ingredients</div>
+          {activeFilter === 'accurate' && generatedReport?.summaryStats ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+              <div className="card text-center" style={{ padding: '1.25rem' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>${generatedReport.summaryStats.totalFoodCost.toFixed(2)}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Food Cost</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem', border: '1px solid var(--primary)' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>${generatedReport.summaryStats.accurateFoodCost.toFixed(2)}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Accurate Items Cost</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--success)' }}>${generatedReport.summaryStats.totalSales.toFixed(2)}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Sales</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{generatedReport.summaryStats.percentageFoodCost.toFixed(2)}%</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overall Food Cost %</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem', border: '1px solid var(--primary)' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>{generatedReport.summaryStats.percentageAccurateFoodCost.toFixed(2)}%</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Accurate Items Cost %</div>
+              </div>
             </div>
-            <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'loss' ? '2px solid var(--danger)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('loss')}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger)' }}>{losses}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loss Count (Shortage)</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+              <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'all' ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('all')}>
+                <div style={{ fontSize: '2rem', fontWeight: 700 }}>{total}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Audited Ingredients</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'loss' ? '2px solid var(--danger)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('loss')}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger)' }}>{losses}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loss Count (Shortage)</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'overage' ? '2px solid var(--success)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('overage')}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>{overages}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overage Count</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'ontarget' ? '2px solid var(--success)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('ontarget')}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>{perfect}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>On Target</div>
+              </div>
+              <div className="card text-center" style={{ padding: '1.25rem' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: netLoss > 0 ? 'var(--danger)' : '#fff' }}>-{netLoss.toFixed(1)}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Net Loss Qty</div>
+              </div>
             </div>
-            <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'overage' ? '2px solid var(--success)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('overage')}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>{overages}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Overage Count</div>
-            </div>
-            <div className="card text-center" style={{ padding: '1.25rem', cursor: 'pointer', border: activeFilter === 'ontarget' ? '2px solid var(--success)' : '1px solid rgba(255,255,255,0.04)' }} onClick={() => setActiveFilter('ontarget')}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>{perfect}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>On Target</div>
-            </div>
-            <div className="card text-center" style={{ padding: '1.25rem' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: netLoss > 0 ? 'var(--danger)' : '#fff' }}>-{netLoss.toFixed(1)}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Net Loss Qty</div>
-            </div>
-          </div>
+          )}
 
           {/* Results Table */}
           <div className="card" style={{ width: '100%' }}>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <button className={`btn ${activeFilter === 'accurate' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveFilter('accurate')}>Accurate Item Usage</button>
               <button className={`btn ${activeFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveFilter('all')}>All Items</button>
               <button className={`btn ${activeFilter === 'variance' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveFilter('variance')}>Discrepancies</button>
               <button className={`btn ${activeFilter === 'loss' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveFilter('loss')}>Losses</button>
@@ -984,29 +1011,38 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
             <div className="table-container">
               <table className="custom-table responsive-table">
                 <thead>
-                  <tr>
-                    <th>Ingredient</th>
-                    <th>Unit</th>
-                    <th style={{ textAlign: 'right' }}>Start Stock</th>
-                    <th style={{ textAlign: 'right' }}>Deliveries</th>
-                    <th style={{ textAlign: 'right' }}>End Stock</th>
-                    <th style={{ textAlign: 'right' }}>Used</th>
-                    <th style={{ textAlign: 'right' }}>Sold (Recipe)</th>
-                    <th style={{ textAlign: 'center', width: '120px' }}>Lost (Variance)</th>
-                  </tr>
+                  {activeFilter === 'accurate' ? (
+                    <tr>
+                      <th>Accurate Ingredient</th>
+                      <th>Unit</th>
+                      <th style={{ textAlign: 'right' }}>Actual Usage</th>
+                      <th style={{ textAlign: 'right' }}>Unit Price</th>
+                      <th style={{ textAlign: 'right' }}>Total Cost</th>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <th>Ingredient</th>
+                      <th>Unit</th>
+                      <th style={{ textAlign: 'right' }}>Start Stock</th>
+                      <th style={{ textAlign: 'right' }}>Deliveries</th>
+                      <th style={{ textAlign: 'right' }}>End Stock</th>
+                      <th style={{ textAlign: 'right' }}>Used</th>
+                      <th style={{ textAlign: 'right' }}>Sold (Recipe)</th>
+                      <th style={{ textAlign: 'center', width: '120px' }}>Lost (Variance)</th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {filteredAuditRows.map(v => {
                     const name = v.rawItemId?.name || 'Unknown';
                     const unit = v.rawItemId?.unit || '';
+                    const price = v.rawItemId?.price || 0;
                     const startVal = v.initial;
                     // Deliveries calculated back
                     const endVal = v.actualFinal;
                     const soldVal = v.usage;
                     const lostVal = v.varianceValue;
-                    const deliveryVal = Math.max(0, expectedFinalValueFromRaw(v));
-                    const usedVal = (startVal + deliveryVal) - endVal;
-
+                    
                     function expectedFinalValueFromRaw(item) {
                       // Expectation: expectedFinal = start + delivery - sold
                       // Let's resolve deliveries
@@ -1018,6 +1054,24 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
                         return dId && dId.toString() === idStr;
                       });
                       return sessDelivery ? sessDelivery.quantity : 0;
+                    }
+
+                    const deliveryVal = Math.max(0, expectedFinalValueFromRaw(v));
+                    const usedVal = (startVal + deliveryVal) - endVal;
+                    const actualUsageCost = usedVal * price;
+
+                    if (activeFilter === 'accurate') {
+                      return (
+                        <tr key={v._id}>
+                          <td data-label="Ingredient" style={{ fontWeight: 600, color: 'var(--primary)' }}>{name}</td>
+                          <td data-label="Unit">
+                            <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>{unit}</span>
+                          </td>
+                          <td data-label="Actual Usage" style={{ textAlign: 'right', fontWeight: 600 }}>{usedVal.toFixed(2)}</td>
+                          <td data-label="Unit Price" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>${price.toFixed(2)}</td>
+                          <td data-label="Total Cost" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>${actualUsageCost.toFixed(2)}</td>
+                        </tr>
+                      );
                     }
 
                     return (

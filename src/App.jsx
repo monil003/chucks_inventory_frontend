@@ -294,13 +294,22 @@ export default function App() {
           <Activity size={22} style={{ color: 'var(--primary)' }} />
           <span className="logo-text" style={{ fontSize: '1.2rem' }}>Inventory Management</span>
         </div>
-        <button
-          className="mobile-menu-btn"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle navigation"
-        >
-          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={handleLogout}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Sign Out"
+          >
+            <LogOut size={20} />
+          </button>
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle navigation"
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       {/* Sidebar Backdrop (mobile) */}
@@ -449,6 +458,15 @@ export default function App() {
               CSV Mapping
             </div>
           )}
+
+          <div 
+            className="nav-item nav-logout"
+            onClick={handleLogout}
+            style={{ color: 'var(--danger)', marginTop: '0.5rem' }}
+          >
+            <LogOut className="nav-icon" style={{ color: 'var(--danger)' }} />
+            Logout
+          </div>
         </nav>
         
         <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '1rem', paddingBottom: '0.5rem' }}>

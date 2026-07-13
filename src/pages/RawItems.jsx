@@ -7,6 +7,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
   const [unit, setUnit] = useState('pcs');
   const [quantityPerBox, setQuantityPerBox] = useState(0);
   const [price, setPrice] = useState(0);
+  const [isAccurateCount, setIsAccurateCount] = useState(false);
   const [error, setError] = useState('');
 
   const [editingItem, setEditingItem] = useState(null);
@@ -36,14 +37,16 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
           name: name.trim(), 
           unit, 
           quantityPerBox: Number(quantityPerBox) || 0,
-          price: Number(price) || 0 
+          price: Number(price) || 0,
+          isAccurateCount
         });
       } else {
         await onCreateRawItem({ 
           name: name.trim(), 
           unit, 
           quantityPerBox: Number(quantityPerBox) || 0,
-          price: Number(price) || 0 
+          price: Number(price) || 0,
+          isAccurateCount
         });
       }
       handleCancelEdit();
@@ -58,6 +61,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setUnit(item.unit);
     setQuantityPerBox(item.quantityPerBox || 0);
     setPrice(item.price || 0);
+    setIsAccurateCount(item.isAccurateCount || false);
     setError('');
     setIsFormModalOpen(true);
   };
@@ -68,6 +72,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setUnit('pcs');
     setQuantityPerBox(0);
     setPrice(0);
+    setIsAccurateCount(false);
     setError('');
     setIsFormModalOpen(false);
   };
@@ -220,6 +225,7 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   <th>Unit of Measure</th>
                   <th>Qty per Box</th>
                   <th>Price ($)</th>
+                  <th>Accurate</th>
                   <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
               </thead>
@@ -245,6 +251,13 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                       <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--success)' }}>
                         ${item.price !== undefined && item.price !== null ? Number(item.price).toFixed(2) : '0.00'}
                       </span>
+                    </td>
+                    <td data-label="Accurate">
+                      {item.isAccurateCount ? (
+                        <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>-</span>
+                      )}
                     </td>
                     <td data-label="Action" style={{ textAlign: 'right' }}>
                       <button 
@@ -368,6 +381,22 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   onChange={(e) => setPrice(e.target.value)}
                   style={{ background: 'rgba(0, 0, 0, 0.2)' }}
                 />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
+                <input
+                  type="checkbox"
+                  id="accurate-count"
+                  checked={isAccurateCount}
+                  onChange={(e) => setIsAccurateCount(e.target.checked)}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                />
+                <label htmlFor="accurate-count" className="form-label" style={{ marginBottom: 0, cursor: 'pointer' }}>
+                  Is Accurate Count
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                    Track actual usage and variance specifically for this ingredient.
+                  </span>
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
