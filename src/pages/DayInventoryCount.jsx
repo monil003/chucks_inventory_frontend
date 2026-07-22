@@ -4,6 +4,7 @@ import {
   Clipboard, Upload, CheckCircle2, ChevronRight, AlertCircle, 
   RefreshCw, Trash2, Search, ChevronLeft, FileSpreadsheet, Calendar 
 } from 'lucide-react';
+import QuantitySelector from '../components/QuantitySelector';
 
 export default function DayInventoryCount({ rawItems, completedSessions, onRefreshAll }) {
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -14,6 +15,7 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
   // Count States
   const [actualCounts, setActualCounts] = useState({});
   const [endBoxesInput, setEndBoxesInput] = useState({});
+  const [endPackagesInput, setEndPackagesInput] = useState({});
   const [endLooseInput, setEndLooseInput] = useState({});
   const [searchQueryEnd, setSearchQueryEnd] = useState('');
   const [currentPageEnd, setCurrentPageEnd] = useState(1);
@@ -37,10 +39,14 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       
       const actMap = {};
       const actBoxes = {};
+      const actPackages = {};
       const actLoose = {};
 
       rawItems.forEach(item => {
         actMap[item._id] = 0;
+        actBoxes[item._id] = '';
+        actPackages[item._id] = '';
+        actLoose[item._id] = '';
       });
 
       if (data) {
@@ -57,11 +63,27 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
             const qty = item.quantity;
             actMap[id] = qty;
             const rItem = rawItems.find(r => r._id === id.toString());
-            if (rItem && rItem.quantityPerBox > 0) {
-              const b = Math.floor(qty / rItem.quantityPerBox);
-              const l = qty % rItem.quantityPerBox;
-              actBoxes[id] = b === 0 ? '' : String(b);
-              actLoose[id] = l === 0 ? '' : String(l);
+            if (rItem) {
+              if (rItem.packagesPerBox > 0 && rItem.quantityPerPackage > 0) {
+                const boxCapacity = rItem.packagesPerBox * rItem.quantityPerPackage;
+                const b = Math.floor(qty / boxCapacity);
+                const rem = qty % boxCapacity;
+                const p = Math.floor(rem / rItem.quantityPerPackage);
+                const l = rem % rItem.quantityPerPackage;
+                actBoxes[id] = b === 0 ? '' : String(b);
+                actPackages[id] = p === 0 ? '' : String(p);
+                actLoose[id] = l === 0 ? '' : String(l);
+              } else if (rItem.quantityPerBox > 0) {
+                const b = Math.floor(qty / rItem.quantityPerBox);
+                const l = qty % rItem.quantityPerBox;
+                actBoxes[id] = b === 0 ? '' : String(b);
+                actPackages[id] = '';
+                actLoose[id] = l === 0 ? '' : String(l);
+              } else {
+                actBoxes[id] = '';
+                actPackages[id] = '';
+                actLoose[id] = qty === 0 ? '' : String(qty);
+              }
             }
           });
         }
@@ -69,6 +91,7 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       
       setActualCounts(actMap);
       setEndBoxesInput(actBoxes);
+      setEndPackagesInput(actPackages);
       setEndLooseInput(actLoose);
     } catch (err) {
       console.error('Failed to load session for date', err);
@@ -82,32 +105,51 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
     loadSession();
   }, [selectedDate, rawItems]);
 
-  const handleEndBoxesChange = (itemId, val, qtyPerBox) => {
-    const newBoxes = { ...endBoxesInput, [itemId]: val };
-    setEndBoxesInput(newBoxes);
-
-    const boxes = Number(val) || 0;
-    const loose = Number(endLooseInput[itemId]) || 0;
-    const total = (boxes * qtyPerBox) + loose;
-
-    setActualCounts(prev => ({
-      ...prev,
-      [itemId]: total
-    }));
+  const calculateTotalQty = (rItem, boxesVal, packagesVal, looseVal) => {
+    const boxes = Number(boxesVal) || 0;
+    const packages = Number(packagesVal) || 0;
+    const loose = Number(looseVal) || 0;
+    
+    if (rItem.packagesPerBox > 0 && rItem.quantityPerPackage > 0) {
+      const boxCapacity = rItem.packagesPerBox * rItem.quantityPerPackage;
+      return (boxes * boxCapacity) + (packages * rItem.quantityPerPackage) + loose;
+    } else if (rItem.quantityPerBox > 0) {
+      return (boxes * rItem.quantityPerBox) + loose;
+    }
+    return loose;
   };
 
-  const handleEndLooseChange = (itemId, val, qtyPerBox) => {
-    const newLoose = { ...endLooseInput, [itemId]: val };
-    setEndLooseInput(newLoose);
+  const handleEndBoxesChange = (itemId, val, rItem) => {
+    setEndBoxesInput(prev => ({ ...prev, [itemId]: val }));
+    const total = calculateTotalQty(
+      rItem,
+      val,
+      endPackagesInput[itemId] || '',
+      endLooseInput[itemId] || ''
+    );
+    setActualCounts(prev => ({ ...prev, [itemId]: total }));
+  };
 
-    const boxes = Number(endBoxesInput[itemId]) || 0;
-    const loose = Number(val) || 0;
-    const total = (boxes * qtyPerBox) + loose;
+  const handleEndPackagesChange = (itemId, val, rItem) => {
+    setEndPackagesInput(prev => ({ ...prev, [itemId]: val }));
+    const total = calculateTotalQty(
+      rItem,
+      endBoxesInput[itemId] || '',
+      val,
+      endLooseInput[itemId] || ''
+    );
+    setActualCounts(prev => ({ ...prev, [itemId]: total }));
+  };
 
-    setActualCounts(prev => ({
-      ...prev,
-      [itemId]: total
-    }));
+  const handleEndLooseChange = (itemId, val, rItem) => {
+    setEndLooseInput(prev => ({ ...prev, [itemId]: val }));
+    const total = calculateTotalQty(
+      rItem,
+      endBoxesInput[itemId] || '',
+      endPackagesInput[itemId] || '',
+      val
+    );
+    setActualCounts(prev => ({ ...prev, [itemId]: total }));
   };
 
   const handleLoadLastCounts = () => {
@@ -118,6 +160,7 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
     const lastSession = completedSessions[0];
     const counts = { ...actualCounts };
     const newBoxes = { ...endBoxesInput };
+    const newPackages = { ...endPackagesInput };
     const newLoose = { ...endLooseInput };
 
     const inventoryToUse = (lastSession.actualFinalInventory && lastSession.actualFinalInventory.length > 0)
@@ -131,19 +174,33 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
         const qty = item.quantity || 0;
         counts[id] = qty;
         const rItem = rawItems.find(r => r._id === id.toString());
-        if (rItem && rItem.quantityPerBox > 0) {
-          const b = Math.floor(qty / rItem.quantityPerBox);
-          const l = qty % rItem.quantityPerBox;
-          newBoxes[id] = b === 0 ? '' : String(b);
-          newLoose[id] = l === 0 ? '' : String(l);
-        } else if (rItem) {
-          newBoxes[id] = '';
-          newLoose[id] = '';
+        if (rItem) {
+          if (rItem.packagesPerBox > 0 && rItem.quantityPerPackage > 0) {
+            const boxCapacity = rItem.packagesPerBox * rItem.quantityPerPackage;
+            const b = Math.floor(qty / boxCapacity);
+            const rem = qty % boxCapacity;
+            const p = Math.floor(rem / rItem.quantityPerPackage);
+            const l = rem % rItem.quantityPerPackage;
+            newBoxes[id] = b === 0 ? '' : String(b);
+            newPackages[id] = p === 0 ? '' : String(p);
+            newLoose[id] = l === 0 ? '' : String(l);
+          } else if (rItem.quantityPerBox > 0) {
+            const b = Math.floor(qty / rItem.quantityPerBox);
+            const l = qty % rItem.quantityPerBox;
+            newBoxes[id] = b === 0 ? '' : String(b);
+            newPackages[id] = '';
+            newLoose[id] = l === 0 ? '' : String(l);
+          } else {
+            newBoxes[id] = '';
+            newPackages[id] = '';
+            newLoose[id] = qty === 0 ? '' : String(qty);
+          }
         }
       }
     });
     setActualCounts(counts);
     setEndBoxesInput(newBoxes);
+    setEndPackagesInput(newPackages);
     setEndLooseInput(newLoose);
     setError('');
   };
@@ -164,23 +221,38 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
       
       const newCounts = { ...actualCounts };
       const newBoxes = { ...endBoxesInput };
+      const newPackages = { ...endPackagesInput };
       const newLoose = { ...endLooseInput };
       Object.keys(result.countsMap).forEach(id => {
         const qty = result.countsMap[id];
         newCounts[id] = qty;
         const rItem = rawItems.find(r => r._id === id);
-        if (rItem && rItem.quantityPerBox > 0) {
-          const b = Math.floor(qty / rItem.quantityPerBox);
-          const l = qty % rItem.quantityPerBox;
-          newBoxes[id] = b === 0 ? '' : String(b);
-          newLoose[id] = l === 0 ? '' : String(l);
-        } else if (rItem) {
-          newBoxes[id] = '';
-          newLoose[id] = '';
+        if (rItem) {
+          if (rItem.packagesPerBox > 0 && rItem.quantityPerPackage > 0) {
+            const boxCapacity = rItem.packagesPerBox * rItem.quantityPerPackage;
+            const b = Math.floor(qty / boxCapacity);
+            const rem = qty % boxCapacity;
+            const p = Math.floor(rem / rItem.quantityPerPackage);
+            const l = rem % rItem.quantityPerPackage;
+            newBoxes[id] = b === 0 ? '' : String(b);
+            newPackages[id] = p === 0 ? '' : String(p);
+            newLoose[id] = l === 0 ? '' : String(l);
+          } else if (rItem.quantityPerBox > 0) {
+            const b = Math.floor(qty / rItem.quantityPerBox);
+            const l = qty % rItem.quantityPerBox;
+            newBoxes[id] = b === 0 ? '' : String(b);
+            newPackages[id] = '';
+            newLoose[id] = l === 0 ? '' : String(l);
+          } else {
+            newBoxes[id] = '';
+            newPackages[id] = '';
+            newLoose[id] = qty === 0 ? '' : String(qty);
+          }
         }
       });
       setActualCounts(newCounts);
       setEndBoxesInput(newBoxes);
+      setEndPackagesInput(newPackages);
       setEndLooseInput(newLoose);
 
       setUploadFeedbackEnd({
@@ -351,14 +423,14 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
                   <tr>
                     <th>Ingredient</th>
                     <th>Unit</th>
-                    <th style={{ width: '120px', textAlign: 'center' }}>Boxes</th>
-                    <th style={{ width: '120px', textAlign: 'center' }}>Buffer Pcs</th>
+                    <th style={{ width: '150px', textAlign: 'center' }}>Boxes</th>
+                    <th style={{ width: '150px', textAlign: 'center' }}>Packages</th>
+                    <th style={{ width: '150px', textAlign: 'center' }}>Loose Pcs</th>
                     <th style={{ width: '160px', textAlign: 'right' }}>Total Count</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedEndItems.map(item => {
-                    const hasBoxConfig = item.quantityPerBox > 0;
                     return (
                       <tr key={item._id}>
                         <td data-label="Ingredient" style={{ fontWeight: 600 }}>{item.name}</td>
@@ -368,54 +440,66 @@ export default function DayInventoryCount({ rawItems, completedSessions, onRefre
                           </span>
                         </td>
                         <td data-label="Boxes" style={{ textAlign: 'center' }}>
-                          {hasBoxConfig ? (
-                            <input
-                              type="number"
-                              min="0"
-                              className="input-field"
+                          {(item.packagesPerBox > 0 || item.quantityPerBox > 0) ? (
+                            <QuantitySelector
                               value={endBoxesInput[item._id] ?? ''}
-                              onChange={(e) => handleEndBoxesChange(item._id, e.target.value, item.quantityPerBox)}
+                              onChange={(val) => handleEndBoxesChange(item._id, val, item)}
                               placeholder="0"
-                              style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
                             />
                           ) : (
                             <span style={{ color: 'var(--text-muted)' }}>-</span>
                           )}
                         </td>
-                        <td data-label="Buffer Pcs" style={{ textAlign: 'center' }}>
-                          {hasBoxConfig ? (
+                        <td data-label="Packages" style={{ textAlign: 'center' }}>
+                          {(item.quantityPerPackage > 0) ? (
+                            <QuantitySelector
+                              value={endPackagesInput[item._id] ?? ''}
+                              onChange={(val) => handleEndPackagesChange(item._id, val, item)}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td data-label="Loose Pcs" style={{ textAlign: 'center' }}>
+                          {(item.packagesPerBox > 0 || item.quantityPerBox > 0 || item.quantityPerPackage > 0) ? (
+                            <QuantitySelector
+                              value={endLooseInput[item._id] ?? ''}
+                              onChange={(val) => handleEndLooseChange(item._id, val, item)}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td data-label="Total Count" style={{ textAlign: 'right' }}>
+                          {(item.packagesPerBox > 0 || item.quantityPerBox > 0 || item.quantityPerPackage > 0) ? (
                             <input
                               type="number"
-                              min="0"
+                              readOnly
                               className="input-field"
-                              value={endLooseInput[item._id] ?? ''}
-                              onChange={(e) => handleEndLooseChange(item._id, e.target.value, item.quantityPerBox)}
-                              placeholder="0"
-                              style={{ width: '80px', margin: '0 auto', textAlign: 'center' }}
+                              value={actualCounts[item._id] ?? ''}
+                              style={{ 
+                                textAlign: 'right', 
+                                fontWeight: 600,
+                                background: 'rgba(255,255,255,0.02)',
+                                color: 'var(--primary)',
+                                border: 'none',
+                                cursor: 'not-allowed',
+                                width: '100px',
+                                display: 'inline-block'
+                              }}
                             />
                           ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                            <QuantitySelector
+                              value={actualCounts[item._id] ?? ''}
+                              onChange={(val) => setActualCounts({
+                                ...actualCounts,
+                                [item._id]: val
+                              })}
+                              placeholder="0"
+                            />
                           )}
-                        </td>
-                        <td data-label="Total Count">
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            className="input-field"
-                            value={actualCounts[item._id] ?? ''}
-                            readOnly={hasBoxConfig}
-                            onChange={(e) => !hasBoxConfig && setActualCounts({
-                              ...actualCounts,
-                              [item._id]: e.target.value
-                            })}
-                            style={{ 
-                              textAlign: 'right', 
-                              fontWeight: 600,
-                              background: hasBoxConfig ? 'rgba(255,255,255,0.02)' : '',
-                              color: hasBoxConfig ? 'var(--primary)' : ''
-                            }}
-                          />
                         </td>
                       </tr>
                     );

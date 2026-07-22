@@ -6,6 +6,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('pcs');
   const [quantityPerBox, setQuantityPerBox] = useState(0);
+  const [packagesPerBox, setPackagesPerBox] = useState(0);
+  const [quantityPerPackage, setQuantityPerPackage] = useState(0);
   const [price, setPrice] = useState(0);
   const [isAccurateCount, setIsAccurateCount] = useState(false);
   const [error, setError] = useState('');
@@ -31,12 +33,18 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
       return;
     }
 
+    const ppb = Number(packagesPerBox) || 0;
+    const qpp = Number(quantityPerPackage) || 0;
+    const calculatedQtyPerBox = (ppb > 0 && qpp > 0) ? (ppb * qpp) : (Number(quantityPerBox) || 0);
+
     try {
       if (editingItem) {
         await onUpdateRawItem(editingItem._id, { 
           name: name.trim(), 
           unit, 
-          quantityPerBox: Number(quantityPerBox) || 0,
+          quantityPerBox: calculatedQtyPerBox,
+          packagesPerBox: ppb,
+          quantityPerPackage: qpp,
           price: Number(price) || 0,
           isAccurateCount
         });
@@ -44,7 +52,9 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
         await onCreateRawItem({ 
           name: name.trim(), 
           unit, 
-          quantityPerBox: Number(quantityPerBox) || 0,
+          quantityPerBox: calculatedQtyPerBox,
+          packagesPerBox: ppb,
+          quantityPerPackage: qpp,
           price: Number(price) || 0,
           isAccurateCount
         });
@@ -60,6 +70,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setName(item.name);
     setUnit(item.unit);
     setQuantityPerBox(item.quantityPerBox || 0);
+    setPackagesPerBox(item.packagesPerBox || 0);
+    setQuantityPerPackage(item.quantityPerPackage || 0);
     setPrice(item.price || 0);
     setIsAccurateCount(item.isAccurateCount || false);
     setError('');
@@ -71,6 +83,8 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
     setName('');
     setUnit('pcs');
     setQuantityPerBox(0);
+    setPackagesPerBox(0);
+    setQuantityPerPackage(0);
     setPrice(0);
     setIsAccurateCount(false);
     setError('');
@@ -239,7 +253,16 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                       </span>
                     </td>
                     <td data-label="Qty per Box">
-                      {item.quantityPerBox > 0 ? (
+                      {item.packagesPerBox > 0 && item.quantityPerPackage > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+                          <span className="badge" style={{ color: '#fff', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', fontSize: '0.8rem' }}>
+                            {item.packagesPerBox} pk / box ({item.quantityPerPackage} {item.unit}/pk)
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '0.25rem' }}>
+                            Total: {item.quantityPerBox} {item.unit} / box
+                          </span>
+                        </div>
+                      ) : item.quantityPerBox > 0 ? (
                         <span className="badge" style={{ color: '#fff', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                           {item.quantityPerBox} {item.unit} / box
                         </span>
@@ -355,6 +378,34 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                 </select>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Packages per Box (Optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input-field"
+                    placeholder="e.g. 10 pk"
+                    value={packagesPerBox || ''}
+                    onChange={(e) => setPackagesPerBox(e.target.value)}
+                    style={{ background: 'rgba(0, 0, 0, 0.2)' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Qty per Package (Optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input-field"
+                    placeholder="e.g. 5 units/pk"
+                    value={quantityPerPackage || ''}
+                    onChange={(e) => setQuantityPerPackage(e.target.value)}
+                    style={{ background: 'rgba(0, 0, 0, 0.2)' }}
+                  />
+                </div>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Quantity per Box (Optional)</label>
                 <input
@@ -362,11 +413,20 @@ export default function RawItems({ rawItems, onCreateRawItem, onUpdateRawItem, o
                   min="0"
                   step="any"
                   className="input-field"
-                  placeholder="e.g. 10 (Leave 0 if not counted in boxes)"
-                  value={quantityPerBox}
+                  placeholder={(Number(packagesPerBox) && Number(quantityPerPackage)) ? `${packagesPerBox * quantityPerPackage} (Auto-calculated)` : "e.g. 10 (Leave 0 if not counted in boxes)"}
+                  value={(Number(packagesPerBox) && Number(quantityPerPackage)) ? (packagesPerBox * quantityPerPackage) : (quantityPerBox || '')}
                   onChange={(e) => setQuantityPerBox(e.target.value)}
-                  style={{ background: 'rgba(0, 0, 0, 0.2)' }}
+                  disabled={Boolean(Number(packagesPerBox) && Number(quantityPerPackage))}
+                  style={{ 
+                    background: (Number(packagesPerBox) && Number(quantityPerPackage)) ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.2)',
+                    cursor: (Number(packagesPerBox) && Number(quantityPerPackage)) ? 'not-allowed' : 'text'
+                  }}
                 />
+                {(Number(packagesPerBox) && Number(quantityPerPackage)) ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                    💡 1 Box = {packagesPerBox} packages x {quantityPerPackage} {unit} = {packagesPerBox * quantityPerPackage} {unit}
+                  </span>
+                ) : null}
               </div>
 
               <div className="form-group">
