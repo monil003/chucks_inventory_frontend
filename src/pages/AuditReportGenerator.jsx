@@ -136,28 +136,28 @@ export default function AuditReportGenerator({ sessions = [], rawItems, recipes,
       });
 
       if (targetSessions.length > 0) {
-        targetSessions.forEach(sess => {
-          const inventoryToUse = sess.actualFinalInventory && sess.actualFinalInventory.length > 0
-            ? sess.actualFinalInventory 
-            : sess.initialInventory;
-          
-          if (inventoryToUse) {
-            inventoryToUse.forEach(item => {
-              if (!item.rawItemId) return;
-              const id = item.rawItemId._id || item.rawItemId;
-              if (id && counts[id.toString()] !== undefined) {
-                counts[id.toString()] += item.quantity || 0;
-              }
-            });
-          }
-        });
+        // Sort sessions by date ascending
+        const sortedSessions = [...targetSessions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const earliestSess = sortedSessions[0];
 
-        const activeDates = targetSessions.map(sess => {
-          return new Date(sess.date).toISOString().split('T')[0];
-        }).sort();
+        const inventoryToUse = earliestSess.actualFinalInventory && earliestSess.actualFinalInventory.length > 0
+          ? earliestSess.actualFinalInventory 
+          : earliestSess.initialInventory;
+        
+        if (inventoryToUse) {
+          inventoryToUse.forEach(item => {
+            if (!item.rawItemId) return;
+            const id = item.rawItemId._id || item.rawItemId;
+            if (id && counts[id.toString()] !== undefined) {
+              counts[id.toString()] = item.quantity || 0;
+            }
+          });
+        }
+
+        const earliestDateStr = new Date(earliestSess.date).toISOString().split('T')[0];
 
         setStartingCounts(counts);
-        setStartingCountsMessage(`Found inventory count records logged on: ${activeDates.join(', ')}. Starting count successfully loaded.`);
+        setStartingCountsMessage(`Found starting inventory count record logged on ${earliestDateStr}. Starting count successfully loaded.`);
       } else {
         setStartingCounts(counts);
         setStartingCountsMessage(`No inventory session found between ${startDate} and before ${endDate}. Starting stock counts will default to 0.`);
