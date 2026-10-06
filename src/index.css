@@ -100,10 +100,13 @@ body {
   border-right: var(--glass-border);
   display: flex;
   flex-direction: column;
-  padding: 2rem 1.5rem;
+  padding: 2rem 1.5rem 2.5rem 1.5rem;
   position: fixed;
   height: 100vh;
   z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .logo-container {
