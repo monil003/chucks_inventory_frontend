@@ -231,6 +231,73 @@ export const api = {
     return res.json();
   },
 
+  // Liquor Management
+  getLiquorItems: async () => {
+    const res = await fetch(`${API_BASE_URL}/liquor/items`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  createLiquorItem: async (item) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/items`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(item),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  updateLiquorItem: async (id, item) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/items/${id}`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(item),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  deleteLiquorItem: async (id) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/items/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  getLiquorCount: async (date) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/count?date=${date}`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  saveLiquorCount: async (payload) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/count`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  getLiquorVariance: async (date) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/variance?date=${date}`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+  saveLiquorSold: async (date, soldMap) => {
+    const res = await fetch(`${API_BASE_URL}/liquor/save-sold`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ date, soldMap }),
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res));
+    return res.json();
+  },
+
   // Auth
   login: async (username, password) => {
     const res = await fetch(`${API_BASE_URL}/auth/login`, {

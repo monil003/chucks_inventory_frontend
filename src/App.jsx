@@ -591,7 +591,10 @@ export default function App() {
             )}
 
             {activeTab === 'liquor-count' && activeRestaurant && (
-              <LiquorStockCount />
+              <LiquorStockCount 
+                currentUser={currentUser}
+                activeRestaurant={activeRestaurant}
+              />
             )}
 
             {activeTab === 'end-sales' && activeRestaurant && (
@@ -759,7 +762,7 @@ function LoginPage({ onLogin }) {
         {!isRegistering && (
           <div style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             <p>Default accounts (password is username + 123):</p>
-            <p style={{ marginTop: '0.25rem', fontWeight: 600 }}>admin | manager | staff</p>
+            <p style={{ marginTop: '0.25rem', fontWeight: 600 }}>admin | manager | staff | frontstaff</p>
           </div>
         )}
       </div>

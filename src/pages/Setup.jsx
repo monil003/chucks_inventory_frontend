@@ -213,7 +213,7 @@ export default function Setup({ activeRestaurant, currentUser, onRefreshUser }) 
               >
                 <option value="manager">Manager (All Setup Access)</option>
                 <option value="food_access">Food Access (Enter Food Count Only)</option>
-                <option value="liquor_access">Liquor Access (Enter Liquor Count Only)</option>
+                <option value="liquor_access">Front Staff / Bartender (Today's Liquor Count Only)</option>
               </select>
             </div>
 
